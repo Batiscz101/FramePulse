@@ -1,11 +1,12 @@
 # FramePulse — mobile app
 
-Expo (React Native + TypeScript) telemetrie FPS. Tmavý minimalistický design ve stylu Apple Health / Whoop / Linear.
+Expo (React Native + TypeScript) FPS telemetry. Minimalist dark design
+inspired by Apple Health / Whoop / Linear.
 
-## Připojení k Supabase
+## Connect to Supabase
 
-Data se načítají ze stejného Supabase projektu jako u `pc-agent`. Zkopírujte vzor
-a doplňte údaje z **Project Settings → API**:
+Data is loaded from the same Supabase project as `pc-agent`. Copy the sample
+and fill in the values from **Project Settings → API**:
 
 ```bash
 cp .env.example .env.local   # Windows: copy .env.example .env.local
@@ -13,34 +14,38 @@ cp .env.example .env.local   # Windows: copy .env.example .env.local
 
 ```dotenv
 EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon nebo publishable klíč>
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon or publishable key>
 ```
 
-`.env.local` je ignorovaný gitem. Bez něj aplikace použije ukázkovou adresu a
-zobrazí chybu připojení. Tabulky vytvoří [`supabase_schema.sql`](../supabase_schema.sql).
+`.env.local` is ignored by git. Without it the app uses the sample address
+and shows a connection error. The tables are created by
+[`supabase_schema.sql`](../supabase_schema.sql).
 
-## Spuštění
+## Running
 
 ```bash
 npm install
 npx expo start
 ```
 
-Poté naskenujte QR kód v aplikaci **Expo Go** (Android/iOS). Po změně
-`.env.local` restartujte dev server.
+Then scan the QR code in the app **Expo Go** (Android/iOS). After changing
+`.env.local`, restart the dev server.
 
-## Obrazovky
+## Screens
 
-- `src/app/index.tsx` — seznam her s vyhledáváním, posledním průměrným FPS a datem.
-- `src/app/game/[id].tsx` — detail hry: výběr seance, Avg / Min / Max FPS a interaktivní graf.
-- `src/components/fps-chart.tsx` — `react-native-gifted-charts` s pointer tooltipem.
-- `src/lib/telemetry-api.ts` — čtení a zápis dat přes Supabase (PostgREST).
-- `src/lib/i18n.ts` — překlady do češtiny a angličtiny.
+- `src/app/index.tsx` — list of games with search, last average FPS and date.
+- `src/app/game/[id].tsx` — game detail: session selection, Avg / Min / Max
+  FPS and the interactive chart.
+- `src/components/fps-chart.tsx` — `react-native-gifted-charts` with a pointer
+  tooltip.
+- `src/lib/telemetry-api.ts` — reading and writing data via Supabase
+  (PostgREST).
+- `src/lib/i18n.ts` — translations to Czech and English.
 
-## Kontrola
+## Checks
 
 ```bash
 npx tsc --noEmit   # typecheck
 npx expo lint      # lint
-npx expo-doctor    # kontrola závislostí
+npx expo-doctor    # check dependencies
 ```
