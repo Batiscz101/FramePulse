@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "FramePulse",
+    "slug": "framepulse",
+    "version": "1.0.0",
+    "scheme": "framepulse",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#09090B",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.framepulse.app"
+    },
+    "android": {
+      "package": "com.framepulse.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#09090B",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "99fd69e0-5efb-4e28-9bc3-a2ce9040b63b"
+      }
+    },
+    "owner": "batiscz"
+  }
+}

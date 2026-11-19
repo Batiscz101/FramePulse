@@ -1,0 +1,21 @@
+{
+  "supabase_url": "https://your-project.supabase.co",
+  "supabase_key": "your-anon-key",
+  "presentmon_path": "tools/PresentMon.exe",
+  "poll_interval_seconds": 2.0,
+  "sample_interval_seconds": 2.0,
+  "min_session_seconds": 15,
+  "warmup_seconds": 5.0,
+  "confirm_frames_seconds": 90,
+  "stall_seconds": 600,
+  "no_game_cooldown_seconds": 900,
+  "preflight_on_start": true,
+  "notifications": true,
+  "notify_on_upload": false,
+  "upload_chunk_size": 500,
+  "request_timeout_seconds": 20,
+  "ignore_processes": [],
+  "force_games": [],
+  "data_dir": "",
+  "debug": false
+}

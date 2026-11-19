@@ -1,0 +1,273 @@
+"""Minimální klient Supabase REST API (PostgREST) bez těžkých závislostí."""
+
+from __future__ import annotations
+
+import logging
+import time
+from typing import Any
+
+import requests
+
+LOG = logging.getLogger(__name__)
+
+TABLE_MISSING_CODES = frozenset({"42P01", "PGRST205"})
+PERMISSION_CODES = frozenset({"42501"})
+DUPLICATE_CODE = "23505"
+
+DEFAULT_TIMEOUT = 20.0
+DEFAULT_RETRIES = 3
+
+
+class SupabaseError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.details = details
+
+
+def is_duplicate(error: SupabaseError) -> bool:
+    """True, když zápis narazil na už existující řádek (unique constraint)."""
+    return error.code == DUPLICATE_CODE or error.status == 409
+
+
+def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseError:
+    """Převede chybovou odpověď PostgRESTu na srozumitelnou hlášku."""
+    payload = payload or {}
+    code = str(payload.get("code") or "")
+    message = str(payload.get("message") or "")
+    details = str(payload.get("details") or "") or None
+    lowered = message.lower()
+
+    if code in TABLE_MISSING_CODES or "schema cache" in lowered:
+        return SupabaseError(
+            "Tabulky v Supabase nejsou vytvořené. Spusťte supabase_schema.sql v SQL Editoru.",
+            status=status,
+            code=code,
+            details=details,
+        )
+
+    if code in PERMISSION_CODES or "permission denied" in lowered:
+        return SupabaseError(
+            "Databáze odmítla zápis – chybí RLS politiky nebo GRANTy. "
+            "Spusťte znovu supabase_schema.sql.",
+            status=status,
+            code=code,
+            details=details,
+        )
+
+    if status in (401, 403):
+        return SupabaseError(
+            "Supabase odmítlo publishable klíč. Zkontrolujte supabase_key v config.json.",
+            status=status,
+            code=code,
+            details=details,
+        )
+
+    return SupabaseError(
+        message or f"Supabase vrátilo HTTP {status}.",
+        status=status,
+        code=code,
+        details=details,
+    )
+
+
+class SupabaseClient:
+    """Tenký wrapper nad PostgREST endpointy pro tabulky games/sessions/fps_samples."""
+
+    def __init__(
+        self,
+        url: str,
+        key: str,
+        *,
+        timeout: float = DEFAULT_TIMEOUT,
+        retries: int = DEFAULT_RETRIES,
+        session: requests.Session | None = None,
+    ) -> None:
+        self._base = url.rstrip("/") + "/rest/v1"
+        self._key = key
+        self._timeout = timeout
+        self._retries = max(1, retries)
+        self._session = session or requests.Session()
+        self._session.headers.update(
+            {
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
+
+    def close(self) -> None:
+        try:
+            self._session.close()
+        except Exception:
+            pass
+
+    # -- veřejné operace -----------------------------------------------------
+
+    def check_health(self) -> None:
+        """Ověří URL, klíč i existenci tabulek."""
+        self._request("GET", "/games", params={"select": "id", "limit": "1"})
+
+    def list_games(self) -> list[dict[str, Any]]:
+        rows = self._request(
+            "GET", "/games", params={"select": "id,name,process_name", "order": "name.asc"}
+        )
+        return rows if isinstance(rows, list) else []
+
+    def find_game(self, process_name: str) -> dict[str, Any] | None:
+        rows = self._request(
+            "GET",
+            "/games",
+            params={
+                "select": "id,name,process_name",
+                "process_name": f"eq.{process_name}",
+                "limit": "1",
+            },
+        )
+        if isinstance(rows, list) and rows:
+            return rows[0]
+        return None
+
+    def create_game(
+        self, name: str, process_name: str, game_id: str | None = None
+    ) -> dict[str, Any] | None:
+        body: dict[str, Any] = {"name": name, "process_name": process_name}
+        if game_id:
+            body["id"] = game_id
+
+        try:
+            rows = self._request(
+                "POST",
+                "/games",
+                json=body,
+                prefer="return=representation",
+            )
+        except SupabaseError as exc:
+            # Hru mezitím založil někdo jiný – volající si ji znovu najde.
+            if is_duplicate(exc):
+                LOG.debug("Hra %s už existuje.", process_name)
+                return None
+            raise
+
+        if isinstance(rows, list) and rows:
+            return rows[0]
+        return None
+
+    def create_session(
+        self,
+        *,
+        session_id: str,
+        game_id: str,
+        played_at: str,
+        avg_fps: float,
+        min_fps: float,
+        max_fps: float,
+        duration_seconds: int,
+    ) -> None:
+        try:
+            self._request(
+                "POST",
+                "/sessions",
+                json={
+                    "id": session_id,
+                    "game_id": game_id,
+                    "played_at": played_at,
+                    "avg_fps": avg_fps,
+                    "min_fps": min_fps,
+                    "max_fps": max_fps,
+                    "duration_seconds": duration_seconds,
+                },
+            )
+        except SupabaseError as exc:
+            # ID je UUID vygenerované agentem – existující řádek znamená,
+            # že seance už byla nahrána (např. po pádu uprostřed uploadu).
+            if is_duplicate(exc):
+                LOG.debug("Seance %s už existuje, pokračuji vzorky.", session_id)
+                return
+            raise
+
+    def delete_samples(self, session_id: str) -> None:
+        self._request("DELETE", "/fps_samples", params={"session_id": f"eq.{session_id}"})
+
+    def insert_samples(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        self._request("POST", "/fps_samples", json=rows)
+
+    # -- HTTP ----------------------------------------------------------------
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        json: Any = None,
+        prefer: str | None = None,
+    ) -> Any:
+        url = f"{self._base}{path}"
+        headers = {"Prefer": prefer} if prefer else {}
+
+        last_error: SupabaseError | None = None
+
+        for attempt in range(1, self._retries + 1):
+            try:
+                response = self._session.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+            except requests.RequestException as exc:
+                last_error = SupabaseError(f"Nelze se připojit k Supabase: {exc}")
+                if attempt < self._retries:
+                    self._backoff(attempt)
+                    continue
+                raise last_error from exc
+
+            if response.ok:
+                if not response.content:
+                    return None
+                try:
+                    return response.json()
+                except ValueError:
+                    return None
+
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {"message": response.text[:300]}
+
+            error = describe_response(response.status_code, payload)
+
+            # Přechodné chyby serveru zkusíme znovu.
+            if response.status_code >= 500 and attempt < self._retries:
+                LOG.warning(
+                    "Supabase HTTP %s (%s), pokus %s/%s",
+                    response.status_code,
+                    error,
+                    attempt,
+                    self._retries,
+                )
+                last_error = error
+                self._backoff(attempt)
+                continue
+
+            raise error
+
+        raise last_error or SupabaseError("Neznámá chyba komunikace se Supabase.")
+
+    @staticmethod
+    def _backoff(attempt: int) -> None:
+        time.sleep(min(2 ** (attempt - 1), 8))

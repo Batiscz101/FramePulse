@@ -1,0 +1,48 @@
+# FramePulse – kořenový .gitignore
+
+# --- Závislosti -------------------------------------------------------------
+node_modules/
+.venv/
+venv/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Expo / React Native ----------------------------------------------------
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.tsbuildinfo
+.metro-health-check*
+
+# --- Lokální konfigurace a tajemství ---------------------------------------
+# Všechny .env soubory jsou lokální; .env.example (vzor bez tajemství) zůstává.
+.env*
+!.env.example
+!**/.env.example
+pc-agent/config.json
+
+# --- PresentMon (stahuje setup.bat / download_presentmon.py) -----------------
+pc-agent/tools/PresentMon.exe
+
+# --- Dočasné, logovací a systémové soubory ---------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.swp
+*~
+.cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
