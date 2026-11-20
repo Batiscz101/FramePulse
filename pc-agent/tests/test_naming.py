@@ -65,7 +65,7 @@ class DeriveGameNameTests(unittest.TestCase):
         self.assertEqual(derive_game_name("EldenRing.exe", "Settings"), "Elden Ring")
 
     def test_unknown_process(self) -> None:
-        self.assertEqual(derive_game_name("", None), "Neznámá hra")
+        self.assertEqual(derive_game_name("", None), "Unknown game")
 
 
 if __name__ == "__main__":

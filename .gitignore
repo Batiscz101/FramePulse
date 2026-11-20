@@ -1,6 +1,6 @@
-# FramePulse – kořenový .gitignore
+# FramePulse – root .gitignore
 
-# --- Závislosti -------------------------------------------------------------
+# --- Dependencies -------------------------------------------------------------
 node_modules/
 .venv/
 venv/
@@ -22,8 +22,8 @@ web-build/
 *.tsbuildinfo
 .metro-health-check*
 
-# --- Lokální konfigurace a tajemství ---------------------------------------
-# Všechny .env soubory jsou lokální; .env.example (vzor bez tajemství) zůstává.
+# --- Local configuration and secrets ---------------------------------------
+# All .env files are local; .env.example (the pattern without secrets) stays.
 .env*
 !.env.example
 !**/.env.example
@@ -32,7 +32,7 @@ pc-agent/config.json
 # --- PresentMon (stahuje setup.bat / download_presentmon.py) -----------------
 pc-agent/tools/PresentMon.exe
 
-# --- Dočasné, logovací a systémové soubory ---------------------------------
+# --- Temporary, logging and system files -----------------------------------
 *.log
 *.tmp
 *.temp

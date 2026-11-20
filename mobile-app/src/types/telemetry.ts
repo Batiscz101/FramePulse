@@ -1,4 +1,4 @@
-/** Datový model, se kterým pracuje UI. Odpovídá tabulkám v Supabase. */
+/** The data model that the UI works with. Corresponds to the Supabase tables. */
 
 export type FpsSample = {
   /** Seconds from the start of the session. */

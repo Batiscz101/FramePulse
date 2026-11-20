@@ -30,24 +30,24 @@ const EN_MONTHS_SHORT = [
   'Dec',
 ];
 
-const CS_MONTHS_GENITIVE = [
-  'ledna',
-  'února',
-  'března',
-  'dubna',
-  'května',
-  'června',
-  'července',
-  'srpna',
-  'září',
-  'října',
-  'listopadu',
-  'prosince',
+const MONTHS_GENITIVE = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 const WEEKDAYS_SHORT: Record<Language, string[]> = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  cs: ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'],
+  cs: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 };
 
 type ParsedDate = { day: number; month: number; year: number; weekday: number };
@@ -66,10 +66,10 @@ export function formatShortDate(isoDate: string, language: Language = 'en'): str
   return `${EN_MONTHS_SHORT[month - 1]} ${day}`;
 }
 
-/** `2026-11-16` -> `16. listopadu 2026` (cs) / `November 16, 2026` (en) */
+/** `2026-11-16` -> `16. November 2026` (cs) / `November 16, 2026` (en) */
 export function formatLongDate(isoDate: string, language: Language = 'en'): string {
   const { day, month, year } = parseDate(isoDate);
-  if (language === 'cs') return `${day}. ${CS_MONTHS_GENITIVE[month - 1]} ${year}`;
+  if (language === 'cs') return `${day}. ${MONTHS_GENITIVE[month - 1]} ${year}`;
   return `${EN_MONTHS[month - 1]} ${day}, ${year}`;
 }
 
@@ -110,7 +110,7 @@ export function formatFps(value: number, language: Language = 'en'): string {
 
 export function formatSignedFps(delta: number, language: Language = 'en'): string {
   const rounded = Math.round(delta);
-  if (rounded === 0) return language === 'cs' ? 'bez změny' : 'no change';
+  if (rounded === 0) return 'no change';
   const sign = rounded > 0 ? '+' : '−';
   return `${sign}${formatFps(Math.abs(rounded), language)} FPS`;
 }

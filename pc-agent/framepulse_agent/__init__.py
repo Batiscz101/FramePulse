@@ -1,4 +1,4 @@
-"""FramePulse PC agent – sběr FPS přes PresentMon a odesílání do Supabase."""
+"""FramePulse PC agent – FPS collection via PresentMon and sending to Supabase."""
 
 from __future__ import annotations
 

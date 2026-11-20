@@ -1,4 +1,4 @@
-"""Ikona v oznamovací oblasti a menu agenta (pystray + Pillow)."""
+"""Tray icon and the agent menu (pystray + Pillow)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ DEFAULT_COLOR = (161, 161, 170)  # zinc
 BACKGROUND = (18, 18, 21, 255)
 BORDER = (39, 39, 42, 255)
 
-# Křivka pulzu – minimalistický „heartbeat“, žádný neon.
+# Pulse curve – minimalist heartbeat, no neon.
 PULSE_POINTS = ((10, 38), (19, 38), (25, 21), (33, 47), (41, 29), (47, 38), (54, 38))
 
 
@@ -49,7 +49,7 @@ def _accent_for(state: str, last_error: str | None) -> tuple[int, int, int]:
 
 
 def make_icon(state: str = "idle", last_error: str | None = None) -> Image.Image:
-    """Vykreslí ikonu 64×64 podle stavu agenta."""
+    """Renders the 64×64 icon according to the agent state."""
     image = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
@@ -67,7 +67,7 @@ def _truncate(text: str, limit: int = 120) -> str:
 
 
 class TrayApp:
-    """Ikona v trayi, menu a propojení s `GameAgent`."""
+    """Tray icon, menu and connection to `GameAgent`."""
 
     def __init__(
         self,
@@ -89,11 +89,11 @@ class TrayApp:
         self._icon = pystray.Icon(
             "FramePulseAgent",
             make_icon("idle"),
-            "FramePulse – spouštím…",
+            "FramePulse – starting…",
             menu=self._build_menu(),
         )
 
-    # -- běh -----------------------------------------------------------------
+    # -- run -----------------------------------------------------------------
 
     def run(self) -> None:
         self._icon.run(setup=self._setup)
@@ -113,7 +113,7 @@ class TrayApp:
             try:
                 self._apply_status(self._agent.status())
             except Exception:
-                LOG.debug("Aktualizace traye selhala", exc_info=True)
+                LOG.debug("Tray refresh failed", exc_info=True)
 
     def _apply_status(self, status: AgentStatus) -> None:
         if status == self._last_status:
@@ -128,7 +128,7 @@ class TrayApp:
         self._icon.title = _truncate(f"FramePulse – {status.title}")
 
         if status.state == STATE_ERROR and status.last_error:
-            self._icon.title = _truncate(f"FramePulse – chyba: {status.last_error}")
+            self._icon.title = _truncate(f"FramePulse – error: {status.last_error}")
 
         try:
             self._icon.update_menu()
@@ -148,10 +148,10 @@ class TrayApp:
                 enabled=lambda item: self._pending_count() > 0,
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Otevřít log", self._open_log),
-            pystray.MenuItem("Otevřít složku s daty", self._open_data_dir),
+            pystray.MenuItem("Open log", self._open_log),
+            pystray.MenuItem("Open data folder", self._open_data_dir),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Ukončit FramePulse", self._on_quit),
+            pystray.MenuItem("Quit FramePulse", self._on_quit),
         )
 
     def _status_text(self, _item=None) -> str:
@@ -162,27 +162,27 @@ class TrayApp:
         return text
 
     def _pause_text(self, _item=None) -> str:
-        return "Pokračovat v měření" if self._agent.paused else "Pozastavit měření"
+        return "Resume measuring" if self._agent.paused else "Pause measuring"
 
     def _pending_text(self, _item=None) -> str:
         pending = self._pending_count()
-        return f"Odeslat frontu ({pending})" if pending else "Fronta je prázdná"
+        return f"Send queue ({pending})" if pending else "Queue is empty"
 
     def _pending_count(self) -> int:
         return self._agent.status().pending_uploads
 
-    # -- akce ----------------------------------------------------------------
+    # -- actions ----------------------------------------------------------------
 
     def _on_toggle_pause(self, _icon=None, _item=None) -> None:
         self._agent.toggle_pause()
 
     def _on_quit(self, _icon=None, _item=None) -> None:
-        LOG.info("Ukončuji agenta z menu.")
+        LOG.info("Quitting the agent from the menu.")
         self._stop_refresh.set()
         try:
-            self._icon.visible = False  # okamžitá zpětná vazba
+            self._icon.visible = False  # immediate feedback
         except Exception:
-            LOG.debug("Skrytí ikony selhalo", exc_info=True)
+            LOG.debug("Hiding the icon failed", exc_info=True)
         self._agent.stop()
         self._icon.stop()
 
@@ -190,7 +190,7 @@ class TrayApp:
         try:
             self._icon.notify(message, title)
         except Exception:
-            LOG.debug("Balónková notifikace selhala", exc_info=True)
+            LOG.debug("Balloon notification failed", exc_info=True)
 
     def _open_log(self) -> None:
         file = self._config.log_dir / "agent.log"
@@ -207,4 +207,4 @@ class TrayApp:
                 path.mkdir(parents=True, exist_ok=True)
             os.startfile(str(path))  # type: ignore[attr-defined]
         except OSError:
-            LOG.warning("Cestu %s se nepodařilo otevřít.", path)
+            LOG.warning("The path %s could not be opened.", path)

@@ -73,7 +73,7 @@ elevated rights); the fix is a scheduled task in Task Scheduler with the
 option *Run with highest privileges*.
 
 Without permissions the agent does not crash – the icon turns red and a
-notification reports „PresentMon nemá oprávnění (access denied)“. The game
+notification reports „PresentMon does not have permission (access denied)“. The game
 then stays unmeasured for 15 minutes so that a loop of errors does not occur.
 
 ## Controls
@@ -83,11 +83,11 @@ Clicking the icon opens the menu:
 | Entry | Meaning |
 | --- | --- |
 | *(first row)* | status: waiting / game being measured with live FPS / paused / error |
-| Pozastavit měření | stops detecting games; a partial session is saved |
+| Pause measuring | stops detecting games; a partial session is saved |
 | Odeslat frontu (N) | tries to send the sessions waiting in `outbox/` |
-| Otevřít log | opens `agent.log` |
-| Otevřít složku s daty | opens `%LOCALAPPDATA%\FramePulseAgent` |
-| Ukončit FramePulse | stops the agent; a partial session is saved to the queue |
+| Open log | opens `agent.log` |
+| Open data folder | opens `%LOCALAPPDATA%\FramePulseAgent` |
+| Quit FramePulse | stops the agent; a partial session is saved to the queue |
 
 The icon tooltip shows the status, and for a measured game the live FPS too.
 
@@ -159,11 +159,11 @@ The database receives:
 
 | Symptom | Solution |
 | --- | --- |
-| `Tabulky v Supabase nejsou vytvořené` (PGRST205) | run `supabase_schema.sql` in the SQL Editor |
+| `The Supabase tables are not created` (PGRST205) | run `supabase_schema.sql` in the SQL Editor |
 | icon red, „access denied“ | missing PresentMon permissions (see above) |
 | icon does not appear | check `logs\agent.log`; run `setup.bat` if dependencies are missing |
-| game is not measured | look for „Detekována hra“ in the log; optionally add the `.exe` to `force_games`; after a failure the 15-minute cooldown applies |
-| the session did not appear in the app | check `outbox/` and the *Odeslat frontu* button; the log contains the reason for the error |
+| game is not measured | look for „Game detected“ in the log; optionally add the `.exe` to `force_games`; after a failure the 15-minute cooldown applies |
+| the session did not appear in the app | check `outbox/` and the *Send queue* button; the log contains the reason for the error |
 | antivirus asks about `pythonw.exe` | allow it; the agent needs only window reading and network access |
 
 ## Development and tests

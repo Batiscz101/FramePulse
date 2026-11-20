@@ -97,7 +97,7 @@ class FailureClassificationTests(unittest.TestCase):
     def test_empty_error(self) -> None:
         failure = classify_failure("")
         self.assertEqual(failure.kind, "unknown")
-        self.assertIn("bez chybové zprávy", failure.message)
+        self.assertIn("without an error message", failure.message)
 
 
 class PresentMonArgsTests(unittest.TestCase):

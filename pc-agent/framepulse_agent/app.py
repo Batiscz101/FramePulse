@@ -1,7 +1,7 @@
-"""Vstupní bod agenta – příprava prostředí a spuštění traye.
+"""Entry point of the agent – environment preparation and tray startup.
 
-Volá se z `framepulse_agent/__main__.py` (python -m) i ze `start_agent.pyw`
-(pythonw, bez konzole).
+Called from `framepulse_agent/__main__.py` (python -m) and `start_agent.pyw`
+(pythonw, without console).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ MB_TOPMOST = 0x00040000
 
 
 def _ensure_streams() -> None:
-    """Pod pythonw jsou sys.stdout/stderr None – přesměrujeme je do devnull."""
+    """Under pythonw, sys.stdout/stderr are None – redirect them to devnull."""
     devnull = None
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:
@@ -60,14 +60,14 @@ def _fatal(message: str, *, interactive: bool, data_dir: Path | None = None) -> 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="framepulse-agent",
-        description="FramePulse PC agent – měří FPS her a posílá je do Supabase.",
+        description="FramePulse PC agent – measures FPS of games and sends them to Supabase.",
     )
-    parser.add_argument("--config", type=Path, default=None, help="cesta k config.json")
-    parser.add_argument("--debug", action="store_true", help="podrobný log")
+    parser.add_argument("--config", type=Path, default=None, help="path to config.json")
+    parser.add_argument("--debug", action="store_true", help="verbose log")
     parser.add_argument(
         "--silent",
         action="store_true",
-        help="nikdy nezobrazovat chybová okna (používá se při autostartu)",
+        help="never show error dialogs (used at autostart)",
     )
     return parser.parse_args(argv)
 
@@ -78,11 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     interactive = not args.silent
 
     if not acquire_instance_lock():
-        LOG.info("Agent už běží – druhá instance se nespouští.")
+        LOG.info("Agent already running – second instance not started.")
         if interactive:
             _message_box(
-                "FramePulse agent už běží. Najdete ho jako ikonu pulzu "
-                "v oznamovací oblasti vedle hodin.",
+                "The FramePulse agent is already running. Find it as the pulse icon "
+                "in the notification area next to the clock.",
                 error=False,
             )
         return 0
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         LOG.exception("Agent spadl")
         _fatal(
-            f"Agent neočekávaně skončil:\n\n{exc}\n\nPodrobnosti jsou v logu:\n{log_file}",
+            f"The agent exited unexpectedly:\n\n{exc}\n\nDetails are in the log:\n{log_file}",
             interactive=interactive,
             data_dir=config.data_dir,
         )
@@ -129,5 +129,5 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         client.close()
 
-    LOG.info("Agent ukončen.")
+    LOG.info("Agent exited.")
     return 0

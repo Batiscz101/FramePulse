@@ -1,8 +1,8 @@
-"""Spouštěč agenta bez konzolového okna (dvojklik nebo autostart).
+"""Launcher for the agent without a console window (double-click or autostart).
 
-Doporučené spuštění je přes `start_agent.bat`, které použije virtuální
-prostředí vytvořené `setup.bat`. Pokud se tento soubor spustí systémovým
-Pythonem bez závislostí, zobrazí se srozumitelná hláška.
+The recommended launch is via `start_agent.bat`, which uses the virtual
+environment created by `setup.bat`. If this file runs with the system Python
+without dependencies, a readable message is shown.
 """
 
 from __future__ import annotations
@@ -56,10 +56,10 @@ def _check_dependencies() -> None:
         import requests  # noqa: F401
     except ImportError as exc:
         _fail(
-            "Chybí závislosti agenta:\n\n"
+            "Missing agent dependencies:\n\n"
             f"{exc}\n\n"
-            "Spusťte nejprve setup.bat ve složce pc-agent. Ten vytvoří "
-            "virtuální prostředí a nainstaluje vše potřebné."
+            "First run setup.bat in the pc-agent folder. It creates "
+            "the virtual environment and installs everything needed."
         )
 
 

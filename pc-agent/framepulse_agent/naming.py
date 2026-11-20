@@ -1,16 +1,15 @@
-"""Odvození čitelného názvu hry z názvu procesu a titulku okna."""
+"""Deriving a readable game name from the process name and window title."""
 
 from __future__ import annotations
 
 import re
 
-# Titulky, které rozhodně nejsou hra (shell, systémová UI, chybová hlášení).
+# Window titles that are definitely not games (shell, system UI, error messages).
 _BAD_TITLES = {
     "program manager",
     "desktop",
     "task switching",
     "settings",
-    "nastavení",
     "microsoft text input application",
     "default ime",
     "msctfime ui",
@@ -21,24 +20,24 @@ _BAD_TITLES = {
 _BAD_TITLE_PATTERN = re.compile(
     r"\b(error|crash|crash reporter|not responding|installer|installation|setup|"
     r"updater|update|uninstall|properties|compatibility|control panel|device manager|"
-    r"task manager|file explorer|správce úloh|průzkumník)\b",
+    r"task manager|file explorer)\b",
     re.IGNORECASE,
 )
 
-# Přípony, které do názvu hry nepatří.
+# Suffixes that do not belong to the game name.
 _EXE_SUFFIX_PATTERN = re.compile(
     r"(?:[-_ ]?(?:win64|win32|x64|x86|shipping|retail|steam|gog|epic|egs))+$",
     re.IGNORECASE,
 )
 
-# Launchery, které se lepí za titulek okna („Hra – Steam“).
+# Launchers that stick to the window title ("Game – Steam").
 _TITLE_SUFFIX_PATTERN = re.compile(
     r"\s*[-–—]\s*(steam|gog(?:\.com)?|epic games(?: launcher)?|epic|ubisoft connect|"
     r"uplay|ea app|origin|battle\.net|battlenet|rockstar games launcher|xbox)\s*$",
     re.IGNORECASE,
 )
 
-# Závorky s technickými údaji: „(x64)“, „[1.6.1]“, „(DX12)“.
+# Brackets with technical details: "(x64)", "[1.6.1]", "(DX12)".
 _TRAILING_BRACKETS = re.compile(r"\s*[\(\[\{][^\)\]\}]{0,24}[\)\]\}]\s*$")
 
 _TECH_BRACKET = re.compile(
@@ -59,7 +58,7 @@ MAX_TITLE_LENGTH = 64
 def pretty_process_name(exe: str) -> str:
     """`Cyberpunk2077.exe` -> `Cyberpunk 2077`.
 
-    Zvládá i běžné sufixy Unreal Enginu (`-Win64-Shipping`) a camelCase
+    Handles common Unreal Engine suffixes (`-Win64-Shipping`) and camelCase
     (`DOOMEternal` -> `DOOM Eternal`).
     """
     base = str(exe).strip().strip('"')
@@ -88,14 +87,14 @@ def pretty_process_name(exe: str) -> str:
 
 
 def clean_window_title(title: str | None) -> str | None:
-    """Vrátí použitelný titulek okna, nebo None."""
+    """Returns the usable window title, or None."""
     if not title:
         return None
 
     cleaned = title.strip().strip('"').strip()
     cleaned = _TITLE_SUFFIX_PATTERN.sub("", cleaned)
 
-    # Odstraň technické závorky na konci (max. 2×), ale ne smysluplný podtitul.
+    # Remove technical brackets at the end (up to 2×), but not a meaningful subtitle.
     for _ in range(2):
         match = _TRAILING_BRACKETS.search(cleaned)
         if not match or not _TECH_BRACKET.search(match.group(0)):
@@ -112,7 +111,7 @@ def clean_window_title(title: str | None) -> str | None:
         return None
     if cleaned.lower().endswith(".exe"):
         return None
-    # Samé symboly nebo čísla nejsou název hry.
+    # Symbols or numbers alone are not a game name.
     if not re.search(r"[A-Za-zÀ-ž]", cleaned):
         return None
 
@@ -120,14 +119,14 @@ def clean_window_title(title: str | None) -> str | None:
 
 
 def derive_game_name(exe: str, title: str | None = None) -> str:
-    """Preferuje čistý titulek okna, jinak sestaví název z .exe."""
+    """Prefers the clean window title, otherwise builds the name from the .exe."""
     from_title = clean_window_title(title)
     from_exe = pretty_process_name(exe)
 
     if from_title:
-        # Titulek, který je jen verzí názvu procesu, nemá cenu preferovat.
+        # A title that is just a version of the process name is not worth preferring.
         if from_title.lower().replace(" ", "") != from_exe.lower().replace(" ", ""):
             return from_title
         return from_title
 
-    return from_exe or "Neznámá hra"
+    return from_exe or "Unknown game"

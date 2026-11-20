@@ -1,13 +1,12 @@
-"""Spouštění PresentMonu a parsování jeho CSV výstupu.
+"""Starting PresentMon and parsing its CSV output.
 
-Agent používá PresentMon 2.x (oficiální konzolová aplikace Intelu) s výstupem na
-stdout:
+The agent uses PresentMon 2.x (the official Intel console app) with stdout output:
 
     PresentMon --process_id <pid> --output_stdout --no_console_stats \
                --session_name FramePulseAgent --terminate_on_proc_exit
 
-CSV formát se mezi verzemi mírně liší (2.x „FrameTime“, 1.x „msBetweenPresents“),
-proto se sloupce hledají podle hlavičky, ne podle pořadí.
+The CSV format differs slightly between versions (2.x "FrameTime", 1.x
+"msBetweenPresents"), so columns are found by header, not by position.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ LOG = logging.getLogger(__name__)
 
 CREATE_NO_WINDOW = 0x08000000
 
-# PresentMon 2.x vypisuje chyby na stderr – tohle je jeho hláška bez elevace.
+# PresentMon 2.x prints errors to stderr – this is its message without elevation.
 PERMISSION_MARKERS = (
     "access denied",
     "failed to start trace session",
@@ -35,7 +34,7 @@ PERMISSION_MARKERS = (
     "0x80070005",
 )
 
-# Sloupec s délkou framu, v pořadí priority (všechny varianty napříč verzemi).
+# The frame length column, in priority order (all variants across versions).
 FRAME_TIME_COLUMNS = (
     "msbetweenpresents",
     "frametime",
@@ -62,13 +61,13 @@ class CaptureFailure:
 
 
 def _exe_basename(value: str) -> str:
-    """`C:\\Games\\Game.EXE` -> `game` (pro porovnání sloupce Application)."""
+    """`C:\\Games\\Game.EXE` -> `game` (to compare the Application column)."""
     name = value.replace("\\", "/").rsplit("/", 1)[-1]
     return name[:-4] if name.endswith(".exe") else name
 
 
 class CsvFrameParser:
-    """Převádí řádky CSV z PresentMonu na frame times v ms."""
+    """Converts PresentMon CSV rows to frame times in ms."""
 
     def __init__(
         self,
@@ -93,14 +92,14 @@ class CsvFrameParser:
         return list(self._header) if self._header else None
 
     def feed(self, line: str) -> float | None:
-        """Zpracuje jeden řádek; vrátí frame time v ms nebo None."""
+        """Processes one row; returns the frame time in ms or None."""
         text = line.strip("\r\n")
         if not text.strip():
             return None
 
         if self._header is None:
             if "," not in text:
-                return None  # úvodní text PresentMonu, ne CSV
+                return None  # leading PresentMon text, not CSV
             cells = self._split(text)
             normalized = [normalize_header(cell) for cell in cells]
             if PID_COLUMN not in normalized and APPLICATION_COLUMN not in normalized:
@@ -117,9 +116,9 @@ class CsvFrameParser:
                     self._frame_index = index
                     break
 
-            LOG.debug("CSV hlavička PresentMonu: %s", ",".join(cells))
+            LOG.debug("PresentMon CSV header: %s", ",".join(cells))
             if self._frame_index is None:
-                LOG.warning("V CSV PresentMonu chybí sloupec s frame time: %s", cells)
+                LOG.warning("The PresentMon CSV is missing the frame time column: %s", cells)
             return None
 
         if self._frame_index is None:
@@ -156,7 +155,7 @@ class CsvFrameParser:
         self.frames_seen += 1
         return frame_ms
 
-    # -- interní -------------------------------------------------------------
+    # -- internal -------------------------------------------------------------
 
     @staticmethod
     def _split(line: str) -> list[str]:
@@ -179,19 +178,20 @@ def classify_failure(text: str) -> CaptureFailure:
     if any(marker in lowered for marker in PERMISSION_MARKERS):
         return CaptureFailure(
             "permission",
-            "PresentMon nemá oprávnění (access denied). Spusťte agenta jako správce, "
-            "nebo přidejte svůj účet do skupiny „Performance Log Users“ a přihlaste se znovu.",
+            "PresentMon does not have permission (access denied). Run the agent as an "
+            "administrator, or add your account to the \"Performance Log Users\" group "
+            "and log in again.",
         )
 
     if "already running" in lowered or "existing session" in lowered:
         return CaptureFailure(
             "session",
-            "Relace PresentMonu je obsazená. Restartujte agenta (nebo PC) a zkuste to znovu.",
+            "The PresentMon session is occupied. Restart the agent (or the PC) and try again.",
         )
 
     first_line = next((line.strip() for line in (text or "").splitlines() if line.strip()), "")
     if not first_line:
-        first_line = "PresentMon skončil bez chybové zprávy."
+        first_line = "PresentMon exited without an error message."
 
     return CaptureFailure("unknown", f"PresentMon selhal: {first_line}")
 
@@ -201,7 +201,7 @@ def build_presentmon_args(
     process_id: int,
     session_name: str = "FramePulseAgent",
 ) -> list[str]:
-    """Argumenty PresentMonu 2.x pro měření jednoho procesu na stdout."""
+    """Arguments of PresentMon 2.x for measuring one process on stdout."""
     return [
         str(exe_path),
         "--process_id",
@@ -237,7 +237,7 @@ def build_preflight_args(
 
 
 class PresentMonCapture:
-    """Živý PresentMon proces + čtecí vlákna pro stdout (CSV) a stderr."""
+    """Live PresentMon process + reader threads for stdout (CSV) and stderr."""
 
     def __init__(
         self,
@@ -262,14 +262,14 @@ class PresentMonCapture:
         self.frames_received = 0
         self.started_at = None
 
-    # -- životní cyklus ------------------------------------------------------
+    # -- lifecycle ------------------------------------------------------
 
     def start(self) -> None:
         if self._process is not None:
-            raise RuntimeError("Capture už běží.")
+            raise RuntimeError("Capture is already running.")
 
         args = build_presentmon_args(self._exe_path, self._process_id, self._session_name)
-        LOG.info("Spouštím PresentMon: %s", " ".join(args))
+        LOG.info("Starting PresentMon: %s", " ".join(args))
 
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -300,7 +300,7 @@ class PresentMonCapture:
         self._stderr_thread.start()
 
     def stop(self, grace_seconds: float = 5.0) -> None:
-        """Nechá PresentMon dojet (flush CSV), jinak ho ukončí."""
+        """Lets PresentMon finish (flush CSV), otherwise terminates it."""
         process = self._process
         if process is None:
             return
@@ -308,7 +308,7 @@ class PresentMonCapture:
         try:
             process.wait(timeout=grace_seconds)
         except subprocess.TimeoutExpired:
-            LOG.info("PresentMon neukončil sám, ukončuji.")
+            LOG.info("PresentMon did not exit on its own, terminating.")
             process.terminate()
             try:
                 process.wait(timeout=3)
@@ -339,7 +339,7 @@ class PresentMonCapture:
         parser = self._parser
         return parser is not None and parser.header is not None
 
-    # -- čtení potrubí -------------------------------------------------------
+    # -- reading pipes -------------------------------------------------------
 
     def _read_stdout(self) -> None:
         process = self._process
@@ -355,10 +355,10 @@ class PresentMonCapture:
                 self.frames_received += 1
                 try:
                     self._on_frame(frame_ms)
-                except Exception:  # callback nesmí zabít čtecí vlákno
-                    LOG.exception("Chyba při zpracování frame time")
+                except Exception:  # callback must not kill the reader thread
+                    LOG.exception("Error processing frame time")
         except Exception:
-            LOG.exception("Čtení stdout PresentMonu selhalo")
+            LOG.exception("Reading PresentMon stdout failed")
         finally:
             try:
                 process.stdout.close()
@@ -379,7 +379,7 @@ class PresentMonCapture:
                     self._stderr.append(text)
                 LOG.debug("PresentMon: %s", text)
         except Exception:
-            LOG.exception("Čtení stderr PresentMonu selhalo")
+            LOG.exception("Reading PresentMon stderr failed")
         finally:
             try:
                 process.stderr.close()
@@ -388,16 +388,16 @@ class PresentMonCapture:
 
 
 def preflight(exe_path: Path, timeout: float = 25.0) -> CaptureFailure | None:
-    """Ověří, že PresentMon umí otevřít ETW relaci. None = vše v pořádku."""
+    """Verifies that PresentMon can open an ETW session. None = everything OK."""
     exe = Path(exe_path)
     if not exe.exists():
         return CaptureFailure(
             "missing",
-            f"PresentMon nebyl nalezen ({exe}). Spusťte setup.bat nebo download_presentmon.py.",
+            f"PresentMon was not found ({exe}). Run setup.bat or download_presentmon.py.",
         )
 
     args = build_preflight_args(exe, os.getpid())
-    LOG.info("Ověřuji PresentMon: %s", " ".join(args))
+    LOG.info("Verifying PresentMon: %s", " ".join(args))
 
     try:
         result = subprocess.run(
@@ -411,9 +411,9 @@ def preflight(exe_path: Path, timeout: float = 25.0) -> CaptureFailure | None:
             creationflags=CREATE_NO_WINDOW,
         )
     except subprocess.TimeoutExpired:
-        return CaptureFailure("unknown", "PresentMon neodpověděl včas (timeout).")
+        return CaptureFailure("unknown", "PresentMon did not respond in time (timeout).")
     except OSError as exc:
-        return CaptureFailure("missing", f"PresentMon se nepodařilo spustit: {exc}")
+        return CaptureFailure("missing", f"PresentMon failed to start: {exc}")
 
     if result.returncode == 0:
         return None

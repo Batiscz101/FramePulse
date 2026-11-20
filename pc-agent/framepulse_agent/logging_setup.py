@@ -1,4 +1,4 @@
-"""Logování do souboru – agent běží pod pythonw, konzole není k dispozici."""
+"""Logging to file – the agent runs under pythonw, no console is available."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
 def setup_logging(log_dir: Path, debug: bool = False) -> Path:
-    """Nastaví rotující log do `log_dir/agent.log` a vrátí cestu k souboru."""
+    """Sets the rotating log to `log_dir/agent.log` and returns the file path."""
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "agent.log"
 
@@ -27,7 +27,7 @@ def setup_logging(log_dir: Path, debug: bool = False) -> Path:
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root.addHandler(file_handler)
 
-    # Při spuštění z konzole (vývoj) logujeme i tam. Pod pythonw je stderr None.
+    # When started from the console (development), log there too. Under pythonw, stderr is None.
     if sys.stderr is not None and sys.stderr.isatty():
         console = logging.StreamHandler(sys.stderr)
         console.setFormatter(logging.Formatter(LOG_FORMAT))
@@ -40,7 +40,7 @@ def setup_logging(log_dir: Path, debug: bool = False) -> Path:
 
 
 def write_fatal(message: str, data_dir: Path | None = None) -> None:
-    """Zapíše chybu, která nastala dřív než šlo nastavit logging."""
+    """Writes an error that happened before logging could be set up."""
     if data_dir is None:
         return
     try:

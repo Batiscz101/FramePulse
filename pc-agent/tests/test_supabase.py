@@ -9,7 +9,7 @@ from framepulse_agent.supabase import SupabaseClient, SupabaseError, describe_re
 class DescribeResponseTests(unittest.TestCase):
     def test_missing_tables(self) -> None:
         error = describe_response(404, {"code": "PGRST205", "message": "not found"})
-        self.assertIn("Tabulky v Supabase nejsou vytvořené", str(error))
+        self.assertIn("The Supabase tables are not created", str(error))
         self.assertEqual(error.code, "PGRST205")
 
     def test_missing_tables_by_message(self) -> None:

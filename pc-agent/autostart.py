@@ -1,6 +1,6 @@
-"""Přidá nebo odebere FramePulse do autostartu po přihlášení (HKCU\\...\\Run).
+"""Adds or removes FramePulse to/from autostart after login (HKCU\\...\\Run).
 
-Použití:
+Usage:
 
     .venv\\Scripts\\python.exe autostart.py enable
     .venv\\Scripts\\python.exe autostart.py disable
@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 def _pythonw() -> Path:
-    """Preferuje pythonw.exe (žádné konzolové okno) vedle aktuálního Pythonu."""
+    """Prefers pythonw.exe (no console window) next to the current Python."""
     executable = Path(sys.executable)
     if executable.name.lower() == "pythonw.exe":
         return executable
@@ -39,7 +39,7 @@ def build_command() -> str:
 
 def enable() -> int:
     if winreg is None:
-        print("Autostart je podporovaný jen na Windows.", file=sys.stderr)
+        print("Autostart is supported on Windows only.", file=sys.stderr)
         return 1
 
     command = build_command()
@@ -48,14 +48,14 @@ def enable() -> int:
     ) as key:
         winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, command)
 
-    print("Autostart zapnut:")
+    print("Autostart enabled:")
     print(f"  {command}")
     return 0
 
 
 def disable() -> int:
     if winreg is None:
-        print("Autostart je podporovaný jen na Windows.", file=sys.stderr)
+        print("Autostart is supported on Windows only.", file=sys.stderr)
         return 1
 
     try:
@@ -64,31 +64,31 @@ def disable() -> int:
         ) as key:
             winreg.DeleteValue(key, VALUE_NAME)
     except FileNotFoundError:
-        print("Autostart nebyl zapnutý.")
+        print("Autostart was not enabled.")
         return 0
 
-    print("Autostart vypnut.")
+    print("Autostart disabled.")
     return 0
 
 
 def status() -> int:
     if winreg is None:
-        print("Autostart je podporovaný jen na Windows.", file=sys.stderr)
+        print("Autostart is supported on Windows only.", file=sys.stderr)
         return 1
 
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             value, _kind = winreg.QueryValueEx(key, VALUE_NAME)
     except FileNotFoundError:
-        print("Autostart je vypnutý.")
+        print("Autostart is disabled.")
         return 1
 
-    print(f"Autostart je zapnutý:\n  {value}")
+    print(f"Autostart is enabled:\n  {value}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Autostart FramePulse agenta.")
+    parser = argparse.ArgumentParser(description="Autostart for the FramePulse agent.")
     parser.add_argument("action", choices=("enable", "disable", "status"))
     args = parser.parse_args(argv)
 

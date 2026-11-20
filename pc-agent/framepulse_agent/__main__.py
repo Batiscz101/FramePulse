@@ -1,4 +1,4 @@
-"""Umožňuje spuštění `python -m framepulse_agent`."""
+"""Allows running `python -m framepulse_agent`."""
 
 from __future__ import annotations
 

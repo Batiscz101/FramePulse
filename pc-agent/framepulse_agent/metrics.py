@@ -1,7 +1,7 @@
-"""Agregace frame times na vzorky FPS a výpočet metrik seance.
+"""Aggregating frame times into FPS samples and computing session metrics.
 
-Jednotky: PresentMon dodává frame time v milisekundách. Všechny vzorky v grafu
-jsou 2sekundové průměry (konfigurovatelné), `min_fps` je 1% low.
+Units: PresentMon provides frame times in milliseconds. All samples in the
+graph are 2-second averages (configurable), `min_fps` is the 1% low.
 """
 
 from __future__ import annotations
@@ -9,10 +9,10 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 
-# Frame time delší než tohle je spíš artefakt capture (pauza, alt-tab) než frame.
+# A frame time longer than this is more likely a capture artifact (pause, alt-tab) than a frame.
 MAX_FRAME_MS = 10_000.0
 
-# Poslední nedokončený vzorek se uloží, jen když má aspoň tuhle výplň.
+# The last unfinished sample is stored only if it has at least this much content.
 MIN_PARTIAL_SAMPLE_SECONDS = 0.25
 
 
@@ -24,7 +24,7 @@ class FpsMetrics:
     duration_seconds: float
     frame_count: int
     sample_count: int
-    # Celková doba včetně warmupu – používá se pro minimální délku seance.
+    # The total duration including warmup – used for the minimum session length.
     total_seconds: float = 0.0
 
     @property
@@ -41,10 +41,10 @@ class FpsMetrics:
 
 
 class FrameAggregator:
-    """Přijímá frame times a skládá z nich vzorky + metriky.
+    """Accepts frame times and builds samples + metrics from them.
 
-    Je thread-safe: framy přidává čtecí vlákno PresentMonu, stav čte vlákno
-    monitoru a tray.
+    It is thread-safe: frames are added by the PresentMon reader thread, the
+    state is read by the monitor and tray threads.
     """
 
     def __init__(
@@ -70,7 +70,7 @@ class FrameAggregator:
     # -- vstup ---------------------------------------------------------------
 
     def add_frame(self, frame_ms: float) -> bool:
-        """Přidá frame; vrací True, když se tím uzavřel nový vzorek."""
+        """Adds a frame; returns True when this closed a new sample."""
         if frame_ms <= 0 or frame_ms > self._max_frame_ms:
             return False
 
@@ -96,13 +96,13 @@ class FrameAggregator:
             return False
 
     def finish(self) -> None:
-        """Uzavře poslední (nedokončený) vzorek."""
+        """Closes the last (unfinished) sample."""
         with self._lock:
             if self._bucket_open and self._bucket_ms >= MIN_PARTIAL_SAMPLE_SECONDS * 1000.0:
                 self._close_bucket_locked()
             self._bucket_open = False
 
-    # -- výstup --------------------------------------------------------------
+    # -- output --------------------------------------------------------------
 
     def samples(self) -> list[tuple[float, float]]:
         with self._lock:
@@ -118,7 +118,7 @@ class FrameAggregator:
 
     def live_fps(self) -> float | None:
         with self._lock:
-            # Průměr za právě otevřený vzorek, aby hodnota v trayi „žila“.
+            # The average of the currently open sample so the value in the tray "lives".
             if self._bucket_open and self._bucket_ms >= 200.0:
                 return self._bucket_frames / (self._bucket_ms / 1000.0)
             if self._samples:
@@ -140,7 +140,7 @@ class FrameAggregator:
 
         avg_fps = frame_count / measured_seconds
 
-        # 1% low = průměr nejhoršího 1 % frame times převedený zpět na FPS.
+        # 1% low = the mean of the worst 1 % of frame times converted back to FPS.
         worst_count = max(1, int(round(frame_count * 0.01)))
         worst = sorted(frame_times, reverse=True)[:worst_count]
         min_fps = 1000.0 / (sum(worst) / len(worst))
@@ -157,7 +157,7 @@ class FrameAggregator:
             total_seconds=total_seconds,
         )
 
-    # -- interní -------------------------------------------------------------
+    # -- internal -------------------------------------------------------------
 
     def _close_bucket_locked(self) -> None:
         seconds = self._bucket_ms / 1000.0

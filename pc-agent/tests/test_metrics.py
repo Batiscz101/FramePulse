@@ -77,7 +77,7 @@ class FrameAggregatorTests(unittest.TestCase):
 
     def test_unfinished_sample_needs_minimum_fill(self) -> None:
         aggregator = FrameAggregator(sample_seconds=2.0, warmup_seconds=0.0)
-        aggregator.add_frame(10.0)  # příliš krátký zbytek
+        aggregator.add_frame(10.0)  # the remainder is too short
         aggregator.finish()
         self.assertEqual(aggregator.samples(), [])
 

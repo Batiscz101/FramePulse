@@ -1,8 +1,9 @@
-"""Stavový automat agenta: detekce hry, měření přes PresentMon, uložení seance.
+﻿"""State machine of the agent: game detection, measurement via PresentMon,
+session saving.
 
-Běží v jednom pracovním vlákně, které každé 2 sekundy zkontroluje okna a stav
-běžícího měření. Tray jen čte `GameAgent.status()` a posílá povely (pauza,
-odeslání fronty, ukončení) – nikdy neblokuje.
+It runs in a single worker thread that checks windows and measurement state
+every 2 seconds. The tray only reads `GameAgent.status()` and sends commands
+(pause, queue flush, quit) – it never blocks.
 """
 
 from __future__ import annotations
@@ -41,10 +42,10 @@ STATE_CAPTURING = "capturing"
 STATE_PAUSED = "paused"
 STATE_ERROR = "error"
 
-# Jak často obnovovat seznam známých her ze Supabase.
+# How often to refresh the list of known games from Supabase.
 KNOWN_REFRESH_SECONDS = 600.0
 
-# Jak často přepočítávat počet souborů v outboxu.
+# How often to recalculate the file count in the outbox.
 PENDING_REFRESH_SECONDS = 5.0
 
 Notifier = Callable[[str, str], None]
@@ -52,7 +53,7 @@ Notifier = Callable[[str, str], None]
 
 @dataclass(frozen=True)
 class AgentStatus:
-    """Neměnný snapshot stavu pro tray (čte se z jiného vlákna)."""
+    """Immutable status snapshot for the tray (read from another thread)."""
 
     state: str = STATE_IDLE
     game: str | None = None
@@ -67,23 +68,23 @@ class AgentStatus:
 
     @property
     def title(self) -> str:
-        """Krátký popis pro tooltip a první položku menu."""
+        """Short description for the tooltip and the first menu item."""
         if self.state == STATE_CAPTURING and self.game:
             if self.live_fps:
                 return f"{self.game} – {self.live_fps:.0f} FPS"
-            return f"{self.game} – měřím"
+            return f"{self.game} – measuring"
         if self.state == STATE_STARTING and self.game:
-            return f"{self.game} – spouštím"
+            return f"{self.game} – starting"
         if self.state == STATE_PAUSED:
-            return "Pozastaveno"
+            return "Paused"
         if self.state == STATE_ERROR:
-            return "Chyba měření"
-        return "Čekám na hru"
+            return "Measurement error"
+        return "Waiting for a game"
 
 
 @dataclass
 class _Active:
-    """Rozpracovaná seance (měněno jen z pracovního vlákna)."""
+    """Work-in-progress session (modified only by the worker thread)."""
 
     pid: int
     process_name: str
@@ -100,7 +101,7 @@ class _Active:
 
 
 class GameAgent:
-    """Sleduje okna, spouští PresentMon a ukládá dokončené seance."""
+    """Watches windows, starts PresentMon and saves finished sessions."""
 
     def __init__(
         self,
@@ -134,7 +135,7 @@ class GameAgent:
 
         self._status = AgentStatus()
 
-    # -- veřejné API (tray) --------------------------------------------------
+    # -- public API (tray) --------------------------------------------------
 
     def set_startup_issue(self, issue: CaptureFailure | None) -> None:
         self._startup_issue = issue
@@ -150,29 +151,29 @@ class GameAgent:
         self._thread.start()
 
     def stop(self, timeout: float = 10.0) -> None:
-        """Ukončí sledování; rozpracovaná seance se uloží do outboxu."""
+        """Stops watching; the work-in-progress session is saved to the outbox."""
         self._stop_event.set()
         self._wake.set()
         thread = self._thread
         if thread is not None:
             thread.join(timeout=timeout)
             if thread.is_alive():
-                LOG.warning("Pracovní vlákno agenta se neukončilo včas.")
+                LOG.warning("The agent worker thread did not exit in time.")
 
     def toggle_pause(self) -> bool:
-        """Vrací True, pokud je agent po volání pozastavený."""
+        """Returns True if the agent is paused after the call."""
         if self._paused.is_set():
             self._paused.clear()
             with self._lock:
                 if self._state == STATE_PAUSED:
                     self._state = STATE_IDLE
-            LOG.info("Měření obnoveno.")
+            LOG.info("Measurement resumed.")
         else:
             self._paused.set()
             with self._lock:
                 if self._state != STATE_ERROR:
                     self._state = STATE_PAUSED
-            LOG.info("Měření pozastaveno.")
+            LOG.info("Measurement paused.")
         self._wake.set()
         self._publish()
         return self._paused.is_set()
@@ -182,7 +183,7 @@ class GameAgent:
         return self._paused.is_set()
 
     def flush_outbox(self) -> None:
-        """Odešle čekající seance na pozadí (tray nesmí zamrznout)."""
+        """Sends waiting sessions in the background (the tray must not freeze)."""
         threading.Thread(
             target=self._flush_worker, name="outbox-flush", daemon=True
         ).start()
@@ -191,16 +192,16 @@ class GameAgent:
         with self._lock:
             return self._status
 
-    # -- pracovní vlákno -----------------------------------------------------
+    # -- worker thread -----------------------------------------------------
 
     def _run(self) -> None:
-        LOG.info("Sledování her spuštěno (interval %.1f s).", self._config.poll_interval)
-        # Seznam her i frontu načítáme na pozadí, aby první detekce nečekala na síť.
+        LOG.info("Watching games started (interval %.1f s).", self._config.poll_interval)
+        # We load the game list and the queue in the background so the first detection doesn't wait on the network.
         self._refresh_known(force=True)
 
         pending = self._uploader.pending_count()
         if pending:
-            LOG.info("Ve frontě čeká %s seancí, zkouším odeslat.", pending)
+            LOG.info("Waiting %s sessions in the queue, trying to send.", pending)
             self.flush_outbox()
 
         while not self._stop_event.is_set():
@@ -213,13 +214,13 @@ class GameAgent:
                     continue
                 self._tick()
             except Exception:
-                LOG.exception("Chyba v monitorovacím cyklu")
-                self._last_error = "Neočekávaná chyba agenta (podrobnosti v logu)."
+                LOG.exception("Error in the monitoring loop")
+                self._last_error = "Unexpected agent error (details in the log)."
                 self._publish()
             self._sleep(self._config.poll_interval)
 
-        self._finish_active("ukončení agenta", try_upload=False)
-        LOG.info("Sledování her ukončeno.")
+        self._finish_active("agent exit", try_upload=False)
+        LOG.info("Game watching stopped.")
 
     def _sleep(self, seconds: float) -> None:
         self._wake.wait(seconds)
@@ -236,7 +237,7 @@ class GameAgent:
 
         self._publish()
 
-    # -- start měření --------------------------------------------------------
+    # -- measurement start --------------------------------------------------------
 
     def _maybe_start(self) -> None:
         if time.monotonic() - self._known_loaded_at > KNOWN_REFRESH_SECONDS:
@@ -262,7 +263,7 @@ class GameAgent:
     def _begin_session(self, candidate: GameCandidate) -> None:
         name = derive_game_name(candidate.process_name, candidate.title)
         LOG.info(
-            "Detekována hra: %s (%s, pid %s, okno %.0f %%)",
+            "Game detected: %s (%s, pid %s, window %.0f %%)",
             name,
             candidate.process_name,
             candidate.pid,
@@ -296,8 +297,8 @@ class GameAgent:
             capture.start()
         except OSError as exc:
             message = (
-                f"PresentMon se nepodařilo spustit ({exc}). "
-                "Spusťte setup.bat nebo download_presentmon.py."
+                f"PresentMon failed to start ({exc}). "
+                "Run setup.bat or download_presentmon.py."
             )
             self._block(candidate.process_name)
             self._set_error(message)
@@ -309,12 +310,12 @@ class GameAgent:
             self._active = active
             self._state = STATE_STARTING
 
-    # -- průběh měření -------------------------------------------------------
+    # -- measurement progress -------------------------------------------------------
 
     def _monitor(self, active: _Active) -> None:
         capture = active.capture
         if capture is None:
-            self._finish_active("bez capture")
+            self._finish_active("without capture")
             return
 
         now = time.monotonic()
@@ -328,44 +329,44 @@ class GameAgent:
                 with self._lock:
                     self._state = STATE_CAPTURING
                 name = derive_game_name(active.process_name, active.title)
-                LOG.info("Měření potvrzeno: %s", name)
-                self._notify("FramePulse", f"Měřím hru {name}.")
+                LOG.info("Measurement confirmed: %s", name)
+                self._notify("FramePulse", f"Measuring game {name}.")
 
         if not process_alive(active.pid, active.create_time):
-            LOG.info("Proces %s skončil.", active.process_name)
-            self._finish_active("proces ukončen")
+            LOG.info("Process %s exited.", active.process_name)
+            self._finish_active("process exited")
             return
 
         if not capture.running:
-            # PresentMon skončil, i když proces žije – nejčastěji chyba oprávnění.
+            # PresentMon exited even though the process is alive – usually a permission error.
             capture.stop(grace_seconds=1.0)
             if frames == 0:
                 failure = classify_failure(capture.stderr_text)
-                LOG.error("PresentMon selhal: %s", failure.message)
+                LOG.error("PresentMon failed: %s", failure.message)
                 self._handle_failure(active, failure)
                 return
-            self._finish_active("PresentMon ukončen")
+            self._finish_active("PresentMon exited")
             return
 
         elapsed = now - active.start_monotonic
 
         if not active.confirmed and elapsed > self._config.confirm_frames_seconds:
             LOG.info(
-                "PresentMon nezachytil framy pro %s za %.0f s – není to hra.",
+                "PresentMon captured no frames for %s in %.0f s – not a game.",
                 active.process_name,
                 elapsed,
             )
             self._block(active.process_name)
-            self._finish_active("žádné framy")
+            self._finish_active("no frames")
             return
 
         if active.confirmed and active.last_frame_at is not None:
             if now - active.last_frame_at > self._config.stall_seconds:
                 LOG.info(
-                    "Framy přestaly přicházet před %.0f s, seanci uzavírám.",
+                    "Frames stopped arriving for %.0f s, closing the session.",
                     now - active.last_frame_at,
                 )
-                self._finish_active("framy přestaly")
+                self._finish_active("frames stopped")
 
     def _handle_failure(self, active: _Active, failure: CaptureFailure) -> None:
         self._block(active.process_name)
@@ -373,9 +374,9 @@ class GameAgent:
             self._active = None
             self._state = STATE_ERROR
         self._last_error = failure.message
-        self._notify("Měření se nezdařilo", failure.message)
+        self._notify("Measurement failed", failure.message)
 
-    # -- ukončení seance -----------------------------------------------------
+    # -- session finish -----------------------------------------------------
 
     def _finish_active(
         self,
@@ -403,7 +404,7 @@ class GameAgent:
             or metrics.total_seconds < self._config.min_session_seconds
         ):
             LOG.info(
-                "Seance zahozena (%s): %.1f s celkem, %.1f s měřeno, %s framů.",
+                "Session discarded (%s): %.1f s total, %.1f s measured, %s frames.",
                 reason,
                 metrics.total_seconds,
                 metrics.duration_seconds,
@@ -432,12 +433,12 @@ class GameAgent:
         else:
             try:
                 self._uploader.save(record)
-                LOG.info("Seance %s uložena do fronty při ukončení.", record.name)
+                LOG.info("Session %s saved to the queue on exit.", record.name)
             except OSError:
-                LOG.exception("Seanci %s se nepodařilo uložit do fronty.", record.name)
+                LOG.exception("Failed to save session %s to the queue.", record.name)
 
         LOG.info(
-            "Seance %s: %.1f s, průměr %.1f FPS, 1%% low %.1f FPS, %s vzorků (%s).",
+            "Session %s: %.1f s, average %.1f FPS, 1%% low %.1f FPS, %s samples (%s).",
             name,
             metrics.duration_seconds,
             metrics.avg_fps,
@@ -447,10 +448,10 @@ class GameAgent:
         )
         self._publish()
 
-    # -- pomocné -------------------------------------------------------------
+    # -- helpers -------------------------------------------------------------
 
     def _submit_record(self, record: SessionRecord) -> None:
-        """Nahrání běží mimo detekční smyčku, aby výpadek sítě nezdržel měření."""
+        """The upload runs outside the detection loop so a network outage does not delay measurement."""
         ok = self._uploader.submit(record)
         with self._lock:
             if ok:
@@ -462,7 +463,7 @@ class GameAgent:
         if ok and self._config.notify_on_upload:
             self._notify(
                 "FramePulse",
-                f"Uloženo: {record.name}, {record.avg_fps:.0f} FPS průměr.",
+                f"Saved: {record.name}, {record.avg_fps:.0f} FPS average.",
             )
         self._publish()
 
@@ -470,13 +471,13 @@ class GameAgent:
         try:
             uploaded, failed = self._uploader.flush()
         except Exception:
-            LOG.exception("Odesílání fronty selhalo")
+            LOG.exception("Queue flush failed")
             return
         if uploaded:
             self._last_error = None
         self._publish()
         if uploaded and failed == 0:
-            self._notify("FramePulse", f"Z fronty odesláno {uploaded} seancí.")
+            self._notify("FramePulse", f"Sent from the queue: {uploaded} session(s).")
 
     def _refresh_known(self, force: bool = False) -> None:
         now = time.monotonic()
@@ -493,10 +494,10 @@ class GameAgent:
         try:
             games = self._uploader.client.list_games()
         except SupabaseError as exc:
-            LOG.warning("Seznam her se nepodařilo načíst: %s", exc)
+            LOG.warning("Failed to load the game list: %s", exc)
             return
         except Exception:
-            LOG.exception("Seznam her se nepodařilo načíst")
+            LOG.exception("Failed to load the game list")
             return
         finally:
             self._known_loading = False
@@ -507,7 +508,7 @@ class GameAgent:
             if game.get("process_name")
         }
         self._known = frozenset(name for name in known if name)
-        LOG.debug("Známé hry: %s", ", ".join(sorted(self._known)) or "–")
+        LOG.debug("Known games: %s", ", ".join(sorted(self._known)) or "–")
 
     def _block(self, process_name: str) -> None:
         exe = normalize_exe(process_name)
@@ -515,7 +516,7 @@ class GameAgent:
             return
         self._blocked[exe] = time.monotonic() + self._config.no_game_cooldown_seconds
         LOG.info(
-            "Proces %s se %s s nebude měřit.",
+            "Process %s will not be measured for %s s.",
             exe,
             int(self._config.no_game_cooldown_seconds),
         )
@@ -532,7 +533,7 @@ class GameAgent:
         try:
             self._notifier(title, message)
         except Exception:
-            LOG.debug("Notifikaci se nepodařilo zobrazit", exc_info=True)
+            LOG.debug("Failed to show the notification", exc_info=True)
 
     def _publish(self) -> None:
         now = time.monotonic()

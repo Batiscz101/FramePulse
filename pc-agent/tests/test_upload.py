@@ -100,7 +100,7 @@ class ChunkedTests(unittest.TestCase):
 
 
 class FakeClient:
-    """Minimální náhrada SupabaseClient pro test uploadu."""
+    """Minimal SupabaseClient stand-in for upload tests."""
 
     def __init__(self, *, fail_once: bool = False, fail_always: bool = False) -> None:
         self.games: dict[str, dict] = {}

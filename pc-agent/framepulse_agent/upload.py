@@ -1,4 +1,4 @@
-"""Sestavení záznamu seance a jeho odeslání do Supabase (s offline frontou)."""
+"""Assembling the session record and sending it to Supabase (with an offline queue)."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def build_record(
     metrics: FpsMetrics,
     samples: Iterable[tuple[float, float]],
 ) -> SessionRecord:
-    """Převede naměřená data na řádek pro `sessions` + body pro `fps_samples`."""
+    """Converts measured data to a row for `sessions` + bodies for `fps_samples`."""
     played_at = started_at.astimezone(timezone.utc).isoformat(timespec="seconds")
     values = metrics.as_session_values()
 
@@ -86,10 +86,11 @@ def chunked(items: Iterable[Any], size: int) -> Iterator[list[Any]]:
 
 
 class Uploader:
-    """Ukládá seance do Supabase; při výpadku je drží v `outbox/` a zkusí to znovu.
+    """Saves sessions to Supabase; on outage, holds them in `outbox/` and tries again.
 
-    Zápis je idempotentní: seance i hra mají předem vygenerované UUID, vzorky se
-    před vložením mažou a vkládají s `resolution=ignore-duplicates`.
+    The write is idempotent: sessions and games have pre-generated UUIDs,
+    samples are deleted before insertion and inserted with
+    `resolution=ignore-duplicates`.
     """
 
     def __init__(
@@ -104,7 +105,7 @@ class Uploader:
         self._chunk_size = max(1, chunk_size)
         self.last_error: str | None = None
 
-    # -- veřejné API ---------------------------------------------------------
+    # -- public API ---------------------------------------------------------
 
     @property
     def client(self) -> SupabaseClient:
@@ -117,17 +118,17 @@ class Uploader:
             return 0
 
     def submit(self, record: SessionRecord) -> bool:
-        """Zkusí seanci odeslat; při chybě ji nechá ve frontě. Nikdy nevyhazuje."""
+        """Tries to send the session; on error leaves it in the queue. Never raises."""
         path = self.save(record)
         try:
             self._upload(record, path)
         except SupabaseError as exc:
             self.last_error = str(exc)
-            LOG.error("Nahrání seance selhalo (%s). Zůstává ve frontě: %s", exc, path.name)
+            LOG.error("Session upload failed (%s). Remains in the queue: %s", exc, path.name)
             return False
         except Exception:
-            self.last_error = "Neočekávaná chyba při nahrávání seance."
-            LOG.exception("Neočekávaná chyba při nahrávání seance")
+            self.last_error = "Unexpected error during session upload."
+            LOG.exception("Unexpected error during session upload")
             return False
 
         self.last_error = None
@@ -135,7 +136,7 @@ class Uploader:
         return True
 
     def flush(self) -> tuple[int, int]:
-        """Zkusí odeslat všechny čekající seance. Vrací (úspěchy, chyby)."""
+        """Tries to send all waiting sessions. Returns (successes, errors)."""
         uploaded = 0
         failed = 0
 
@@ -145,7 +146,7 @@ class Uploader:
                     json.loads(path.read_text(encoding="utf-8"))
                 )
             except (OSError, ValueError, KeyError, TypeError):
-                LOG.exception("Poškozený soubor ve frontě: %s", path.name)
+                LOG.exception("Corrupted file in the queue: %s", path.name)
                 failed += 1
                 continue
 
@@ -154,16 +155,16 @@ class Uploader:
             except SupabaseError as exc:
                 failed += 1
                 self.last_error = str(exc)
-                LOG.warning("Fronta: %s stále čeká (%s)", path.name, exc)
+                LOG.warning("Queue: %s still waiting (%s)", path.name, exc)
             except Exception:
                 failed += 1
-                LOG.exception("Fronta: neočekávaná chyba u %s", path.name)
+                LOG.exception("Queue: unexpected error with %s", path.name)
             else:
                 uploaded += 1
                 self._delete(path)
 
         if uploaded:
-            LOG.info("Z fronty odesláno %s seancí.", uploaded)
+            LOG.info("Sent from the queue: %s session(s).", uploaded)
         return uploaded, failed
 
     def save(self, record: SessionRecord, path: Path | None = None) -> Path:
@@ -176,7 +177,7 @@ class Uploader:
         temp.replace(target)
         return target
 
-    # -- interní -------------------------------------------------------------
+    # -- internal -------------------------------------------------------------
 
     def _upload(self, record: SessionRecord, path: Path) -> None:
         game = self._client.find_game(record.process_name)
@@ -190,7 +191,7 @@ class Uploader:
 
         if not game or not game.get("id"):
             raise SupabaseError(
-                f"Hru '{record.name}' se nepodařilo založit ani najít v tabulce games."
+                f"Could not create game '{record.name}' or find it in the games table."
             )
 
         game_id = str(game["id"])
@@ -198,7 +199,7 @@ class Uploader:
         if record.session_id is None:
             record.session_id = str(uuid.uuid4())
 
-        # Zapsat id dřív, než se cokoli odešle – retry pak nikdy nevytvoří duplikát.
+        # Write the id before anything is sent – a retry then never creates a duplicate.
         self.save(record, path)
 
         self._client.create_session(
@@ -211,9 +212,9 @@ class Uploader:
             duration_seconds=int(record.duration_seconds),
         )
 
-        # Idempotentní zápis vzorků: před vložením se staré řádky smažou.
-        # Když přesto narazíme na duplicitu (předchozí pokus), zopakujeme celý
-        # blok od začátku – jinak by některé vzorky chyběly.
+        # Idempotent sample write: old rows are deleted before insertion.
+        # If a duplicate still occurs (previous attempt), the whole block is repeated
+        # from the start – otherwise some samples would be missing.
         rows = [
             {
                 "session_id": record.session_id,
@@ -232,14 +233,14 @@ class Uploader:
             except SupabaseError as exc:
                 if attempt == 1 and is_duplicate(exc):
                     LOG.warning(
-                        "Vzorky seance %s už částečně existují, přepisuji.",
+                        "Samples of session %s already partially exist, rewriting.",
                         record.session_id,
                     )
                     continue
                 raise
 
         LOG.info(
-            "Nahráno: %s (%s) – %s vzorků, průměr %.1f FPS",
+            "Uploaded: %s (%s) – %s samples, average %.1f FPS",
             record.name,
             record.process_name,
             len(rows),
@@ -250,4 +251,4 @@ class Uploader:
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            LOG.warning("Soubor ve frontě se nepodařilo smazat: %s", path)
+            LOG.warning("Failed to delete the queue file: %s", path)

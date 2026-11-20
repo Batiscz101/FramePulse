@@ -1,9 +1,10 @@
-"""Detekce běžících her na Windows.
+﻿"""Detection of running games on Windows.
 
-Hra = proces s viditelným oknem, který není v seznamu ignorovaných aplikací a
-buď je už známý z databáze, nebo má okno přes většinu obrazovky, případně leží
-v typické herní složce (Steam, Epic, Xbox…). Skutečnost, že jde o hru, pak
-potvrdí PresentMon – bez zachycených framů se seance neukládá.
+A game = a process with a visible window that is not in the ignore list and
+either is already known from the database, has a window covering most of the
+screen, or lies in a typical game folder (Steam, Epic, Xbox…). The fact that
+it is a game is confirmed by PresentMon – without captured frames, the
+session is not saved.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ MIN_WINDOW_AREA_RATIO = 0.45
 
 WINDIR = os.environ.get("WINDIR", r"C:\Windows").lower()
 
-# Aplikace, které rozhodně nejsou hry.
+# Applications that are definitely not games.
 IGNORED_PROCESSES = frozenset(
     {
         # shell a Windows
@@ -58,7 +59,7 @@ IGNORED_PROCESSES = frozenset(
         "mspaint.exe",
         "snippingtool.exe",
         "systemsettings.exe",
-        # prohlížeče
+        # browsers
         "chrome.exe",
         "msedge.exe",
         "msedgewebview2.exe",
@@ -68,7 +69,7 @@ IGNORED_PROCESSES = frozenset(
         "opera_gx.exe",
         "vivaldi.exe",
         "iexplore.exe",
-        # komunikace, launchery, multimédia
+        # communication, launchers, media
         "discord.exe",
         "discordcanary.exe",
         "discordptb.exe",
@@ -98,7 +99,7 @@ IGNORED_PROCESSES = frozenset(
         "gamebar.exe",
         "xboxgamebarwidgets.exe",
         "widgets.exe",
-        # vývoj, overlay a capture nástroje
+        # development, overlay and capture tools
         "code.exe",
         "devenv.exe",
         "idea64.exe",
@@ -115,7 +116,7 @@ IGNORED_PROCESSES = frozenset(
         "pythonw.exe",
         "py.exe",
         "pyw.exe",
-        # UWP aplikace, které nejsou hry
+        # UWP apps that are not games
         "whatsapp.exe",
         "netflix.exe",
         "disney+.exe",
@@ -147,23 +148,17 @@ IGNORED_TITLES = frozenset(
     {
         "program manager",
         "settings",
-        "nastavení",
         "task manager",
-        "správce úloh",
         "file explorer",
-        "průzkumník souborů",
         "microsoft text input application",
         "search",
-        "hledat",
         "start",
         "notification center",
-        "oznámení",
         "windows security",
-        "zabezpečení windows",
     }
 )
 
-# Procesy, jejichž jméno napovídá, že jde o pomocný nástroj, ne hru.
+# Processes whose name suggests they are a helper tool, not a game.
 _IGNORED_NAME_PATTERN = re.compile(
     r"^(?:"
     r"(?:setup|installer|unins\d*|update|updater|crashpad_handler|crashreporter|"
@@ -174,7 +169,7 @@ _IGNORED_NAME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Typické instalační složky her – bereme jako vodítko pro okenní (ne fullscreen) hry.
+# Typical game install folders – treated as a hint for windowed (non-fullscreen) games.
 GAME_PATH_MARKERS = (
     "\\steamapps\\common\\",
     "\\epic games\\",
@@ -254,7 +249,7 @@ class GameCandidate:
 
 
 def _process_snapshot() -> dict[int, tuple[str, str]]:
-    """pid -> (název procesu, cesta k exe)."""
+    """pid -> (process name, path to exe)."""
     result: dict[int, tuple[str, str]] = {}
     for process in psutil.process_iter(["pid", "name", "exe"]):
         try:
@@ -299,7 +294,7 @@ def _window_area_ratio(hwnd: int) -> float:
 
 
 def enumerate_windows() -> list[WindowInfo]:
-    """Vrátí viditelná okna s informacemi o procesu."""
+    """Returns visible windows with process information."""
     processes = _process_snapshot()
     foreground = int(user32.GetForegroundWindow() or 0)
     windows: list[WindowInfo] = []
@@ -345,7 +340,7 @@ def enumerate_windows() -> list[WindowInfo]:
                     is_minimized=bool(user32.IsIconic(hwnd)),
                 )
             )
-        except Exception:  # okno mezitím zmizelo – nevadí
+        except Exception:  # the window disappeared meanwhile – no problem
             return True
         return True
 
@@ -365,7 +360,7 @@ def is_probable_game(
     force_games: frozenset[str] = frozenset(),
     own_pids: frozenset[int] = frozenset(),
 ) -> bool:
-    """Heuristika: může tohle okno patřit hře?"""
+    """Heuristic: can this window belong to a game?"""
     exe = window.exe.lower()
     if not exe or window.pid in own_pids or window.pid <= 4:
         return False
@@ -406,7 +401,7 @@ def choose_candidate(
     blocked: dict[str, float] | None = None,
     now: float = 0.0,
 ) -> GameCandidate | None:
-    """Vybere nejpravděpodobnější hru (foreground → známá → největší okno)."""
+    """Selects the most likely game (foreground → known → largest window)."""
     blocked = blocked or {}
     best: WindowInfo | None = None
     best_key: tuple[float, float, float] | None = None
@@ -455,7 +450,7 @@ def process_create_time(pid: int) -> float | None:
 
 
 def process_alive(pid: int, create_time: float | None = None) -> bool:
-    """Ověří, že proces stále existuje (a že PID nebyl mezitím znovu použit)."""
+    """Verifies that the process still exists (and that the PID was not reused in the meantime)."""
     try:
         process = psutil.Process(pid)
     except psutil.NoSuchProcess:

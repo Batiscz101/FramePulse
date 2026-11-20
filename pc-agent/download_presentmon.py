@@ -1,8 +1,8 @@
-"""Stáhne oficiální PresentMon (2.x, x64) z GitHubu do `tools/PresentMon.exe`.
+"""Downloads the official PresentMon (2.x, x64) from GitHub to `tools/PresentMon.exe`.
 
-PresentMon je nástroj Intelu pro měření frame times přes ETW. Agent používá
-konzolovou aplikaci 2.x – novější verze se poznají podle názvu assetu
-`PresentMon-<verze>-x64.exe`.
+PresentMon is Intel's tool for measuring frame times over ETW. The agent uses
+the 2.x console app; newer versions are recognized by the asset name
+`PresentMon-<version>-x64.exe`.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _pick_asset(release: dict) -> dict:
         if ASSET_PATTERN.match(str(asset.get("name", ""))):
             return asset
     raise RuntimeError(
-        "V nejnovějším vydání PresentMonu není x64 konzolová aplikace "
+        "The latest PresentMon release has no x64 console app "
         f"({release.get('tag_name', '?')})."
     )
 
@@ -51,31 +51,31 @@ def _download(url: str, target: Path) -> None:
 def _verify(path: Path) -> None:
     size = path.stat().st_size
     if size < MIN_SIZE:
-        raise RuntimeError(f"Stažený soubor je podezřele malý ({size} B).")
+        raise RuntimeError(f"The downloaded file is suspiciously small ({size} B).")
     with path.open("rb") as handle:
         if handle.read(2) != b"MZ":
-            raise RuntimeError("Stažený soubor není spustitelný soubor Windows (chybí MZ).")
+            raise RuntimeError("The downloaded file is not a Windows executable (MZ missing).")
 
 
 def install(target: Path, force: bool = False) -> int:
     if target.exists() and not force:
-        print(f"PresentMon už existuje: {target}")
-        print("Pro novou verzi spusťte: python download_presentmon.py --force")
+        print(f"PresentMon already exists: {target}")
+        print("For a new version, run: python download_presentmon.py --force")
         return 0
 
-    print("Hledám nejnovější PresentMon na GitHubu…")
+    print("Looking for the latest PresentMon on GitHub…")
     try:
         release = _get_json(API_URL)
     except urllib.error.HTTPError as exc:
-        print(f"GitHub API vrátilo HTTP {exc.code}. Zkuste to později.", file=sys.stderr)
+        print(f"GitHub API returned HTTP {exc.code}. Try again later.", file=sys.stderr)
         return 1
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-        print(f"Nepodařilo se spojit s GitHubem: {exc}", file=sys.stderr)
+        print(f"Could not connect to GitHub: {exc}", file=sys.stderr)
         return 1
 
     tag = str(release.get("tag_name") or "?")
     asset = _pick_asset(release)
-    print(f"Stahuji {asset['name']} ({tag})…")
+    print(f"Downloading {asset['name']} ({tag})…")
 
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_suffix(".exe.tmp")
@@ -86,22 +86,22 @@ def install(target: Path, force: bool = False) -> int:
         temp.replace(target)
     except (urllib.error.URLError, OSError, RuntimeError, TimeoutError) as exc:
         temp.unlink(missing_ok=True)
-        print(f"Stažení selhalo: {exc}", file=sys.stderr)
+        print(f"Download failed: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Hotovo: {target} ({target.stat().st_size // 1024} KB, {tag})")
+    print(f"Done: {target} ({target.stat().st_size // 1024} KB, {tag})")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Stáhne PresentMon do složky tools/.")
+    parser = argparse.ArgumentParser(description="Downloads PresentMon into the tools/ folder.")
     parser.add_argument(
         "--target",
         type=Path,
         default=DEFAULT_TARGET,
-        help=f"cílová cesta (výchozí: {DEFAULT_TARGET})",
+        help=f"target path (default: {DEFAULT_TARGET})",
     )
-    parser.add_argument("--force", action="store_true", help="stáhnout i když soubor existuje")
+    parser.add_argument("--force", action="store_true", help="download even if the file exists")
     args = parser.parse_args(argv)
     return install(args.target, args.force)
 

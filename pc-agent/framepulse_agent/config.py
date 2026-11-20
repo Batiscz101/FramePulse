@@ -1,8 +1,8 @@
-"""Načtení a validace konfigurace agenta.
+"""Reading and validation of the agent configuration.
 
-Konfigurace se čte z `pc-agent/config.json`. Pokud soubor neexistuje, vytvoří se
-z výchozích hodnot (včetně připojení k Supabase). Všechny cesty v konfiguraci
-jsou relativní ke složce `pc-agent/`.
+The configuration is read from `pc-agent/config.json`. If the file does not
+exist, it is created with default values (including the Supabase connection).
+All paths in the configuration are relative to the `pc-agent/` folder.
 """
 
 from __future__ import annotations
@@ -28,37 +28,37 @@ CONFIG_FILE = BASE_DIR / "config.json"
 APP_DATA_FOLDER = "FramePulseAgent"
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    # Připojení k Supabase – publishable (anon) klíč je veřejný, data chrání RLS.
-    # Ukázkové hodnoty nahraďte údaji z vašeho projektu (Project Settings → API).
+    # Supabase connection – the publishable (anon) key is public; data is protected by RLS.
+    # Replace the sample values with data from your project (Project Settings → API).
     "supabase_url": "https://your-project.supabase.co",
     "supabase_key": "your-anon-key",
-    # Cesta k PresentMon (relativní ke složce pc-agent).
+    # Path to PresentMon (relative to the pc-agent folder).
     "presentmon_path": "tools/PresentMon.exe",
-    # Jak často kontrolovat běžící hry (sekundy).
+    # How often visible games are checked (seconds).
     "poll_interval_seconds": 2.0,
-    # Délka jednoho vzorku FPS v grafu (sekundy).
+    # Length of one FPS graph point (seconds).
     "sample_interval_seconds": 2.0,
-    # Kratší hraní se neukládá.
+    # Shorter plays are not saved.
     "min_session_seconds": 15,
-    # Na začátku hraní se zahodí načítání (sekundy).
+    # At the start of a play, loading is discarded (seconds).
     "warmup_seconds": 5.0,
-    # Když PresentMon za tuto dobu nezachytí ani frame, proces není hra.
+    # When PresentMon captures no frame within this time, the process is not a game.
     "confirm_frames_seconds": 90,
-    # Když hra přestane posílat framy (alt-tab na dlouho), seance se uzavře.
+    # When the game stops sending frames (alt-tab for a long time), the session is closed.
     "stall_seconds": 600,
-    # Jak dlouho se po neúspěchu ignoruje stejný proces (sekundy).
+    # How long the same process is ignored after a failure (seconds).
     "no_game_cooldown_seconds": 900,
-    # Ověřit oprávnění PresentMonu hned při startu.
+    # Verify PresentMon permissions right at startup.
     "preflight_on_start": True,
     "notifications": True,
     "notify_on_upload": False,
-    # Po kolika vzorcích se posílají fps_samples (PostgREST dávka).
+    # After how many samples fps_samples are sent (PostgREST batch).
     "upload_chunk_size": 500,
     "request_timeout_seconds": 20,
-    # Doplňkové seznamy názvů procesů (např. "mygame.exe").
+    # Additional process name lists (e.g. "mygame.exe").
     "ignore_processes": [],
     "force_games": [],
-    # Prázdné = %LOCALAPPDATA%\FramePulseAgent
+    # Empty = %LOCALAPPDATA%\FramePulseAgent
     "data_dir": "",
     "debug": False,
 }
@@ -67,11 +67,11 @@ _EXE_RE = re.compile(r"[\\/]")
 
 
 class ConfigError(RuntimeError):
-    """Konfiguraci nelze použít (chybí klíč, poškozený JSON…)."""
+    """The configuration cannot be used (missing key, corrupted JSON…)."""
 
 
 def normalize_exe(value: str) -> str:
-    """`Cyberpunk2077.EXE` -> `cyberpunk2077.exe` (jen název, bez cesty)."""
+    """`Cyberpunk2077.EXE` -> `cyberpunk2077.exe` (just the name, without the path)."""
     name = _EXE_RE.split(str(value).strip())[-1].lower()
     if name and not name.endswith(".exe"):
         name += ".exe"
@@ -125,13 +125,13 @@ def _number(raw: dict[str, Any], key: str, fallback: float, minimum: float) -> f
     try:
         value = float(raw.get(key, fallback))
     except (TypeError, ValueError):
-        LOG.warning("Neplatná hodnota %s=%r, používám %s", key, raw.get(key), fallback)
+        LOG.warning("Invalid value %s=%r, using %s", key, raw.get(key), fallback)
         return fallback
     if not math.isfinite(value):
-        LOG.warning("Hodnota %s=%r není konečné číslo, používám %s", key, raw.get(key), fallback)
+        LOG.warning("Value %s=%r is not a finite number, using %s", key, raw.get(key), fallback)
         return fallback
     if value < minimum:
-        LOG.warning("Hodnota %s=%s je příliš malá, používám %s", key, value, minimum)
+        LOG.warning("Value %s=%s is too small, using %s", key, value, minimum)
         return minimum
     return value
 
@@ -139,12 +139,12 @@ def _number(raw: dict[str, Any], key: str, fallback: float, minimum: float) -> f
 def _exe_set(raw: dict[str, Any], key: str) -> frozenset[str]:
     values = raw.get(key) or []
     if not isinstance(values, list):
-        raise ConfigError(f"Hodnota '{key}' v config.json musí být seznam názvů procesů.")
+        raise ConfigError(f"Value '{key}' in config.json must be a list of process names.")
     return frozenset(normalize_exe(item) for item in values if str(item).strip())
 
 
 def load_config(path: Path | None = None) -> Config:
-    """Načte config.json; při první startu ho vytvoří s výchozími hodnotami."""
+    """Reads config.json; on first start, creates it with default values."""
     config_path = path or CONFIG_FILE
     raw: dict[str, Any] = {}
 
@@ -153,17 +153,17 @@ def load_config(path: Path | None = None) -> Config:
             loaded = json.loads(config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ConfigError(
-                f"Soubor {config_path.name} není platný JSON (řádek {exc.lineno})."
+                f"File {config_path.name} is not valid JSON (line {exc.lineno})."
             ) from exc
         if not isinstance(loaded, dict):
-            raise ConfigError(f"Soubor {config_path.name} musí obsahovat JSON objekt.")
+            raise ConfigError(f"File {config_path.name} must contain a JSON object.")
         raw = loaded
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(
             json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        LOG.info("Vytvořen výchozí config.json: %s", config_path)
+        LOG.info("Created default config.json: %s", config_path)
 
     merged: dict[str, Any] = {**DEFAULT_CONFIG, **raw}
 
@@ -173,22 +173,22 @@ def load_config(path: Path | None = None) -> Config:
 
     if not url.startswith(("https://", "http://")):
         raise ConfigError(
-            "V config.json chybí platná 'supabase_url' "
-            "(očekávám např. https://<projekt>.supabase.co)."
+            "config.json is missing a valid 'supabase_url' "
+            "(expected e.g. https://<project>.supabase.co)."
         )
     if not key:
-        raise ConfigError("V config.json chybí 'supabase_key' (publishable/anon klíč).")
+        raise ConfigError("config.json is missing 'supabase_key' (publishable/anon key).")
 
     host = url.split("://", 1)[-1].split("/", 1)[0].lower()
     if host in {"supabase.co", "www.supabase.co", "app.supabase.co"}:
         warnings.append(
-            "supabase_url míří na obecný web Supabase, ne na projekt. "
-            "Použijte adresu https://<project-ref>.supabase.co."
+            "supabase_url points to the generic Supabase web, not to a project. "
+            "Use the address https://<project-ref>.supabase.co."
         )
     if key.startswith("eyJ") and len(key) > 200:
-        LOG.info("Použit starší anon (JWT) klíč.")
+        LOG.info("Using the older anon (JWT) key.")
     elif not key.startswith("sb_publishable_"):
-        warnings.append("supabase_key nevypadá jako publishable klíč (sb_publishable_…).")
+        warnings.append("supabase_key does not look like a publishable key (sb_publishable_…).")
 
     presentmon = Path(str(merged.get("presentmon_path") or "tools/PresentMon.exe"))
     if not presentmon.is_absolute():
@@ -224,6 +224,6 @@ def load_config(path: Path | None = None) -> Config:
     )
 
     for warning in warnings:
-        LOG.warning("Konfigurace: %s", warning)
+        LOG.warning("Configuration: %s", warning)
 
     return config

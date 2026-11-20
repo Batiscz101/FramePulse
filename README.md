@@ -236,11 +236,11 @@ npx eas-cli@latest build --profile preview --platform android
 
 | Symptom | Solution |
 | --- | --- |
-| `Tabulky v Supabase nejsou vytvořené` (PGRST205) | run `supabase_schema.sql` in the SQL Editor |
+| `The Supabase tables are not created` (PGRST205) | run `supabase_schema.sql` in the SQL Editor |
 | agent icon red, „access denied“ | missing PresentMon permissions (see above) |
 | game is not being measured | check `agent.log`; add the small window or unknown path to `force_games`; after a failure a 15-minute cooldown applies |
 | the session did not appear in the app | check `outbox/` and the *Send queue* in the agent menu |
-| aplikace hlásí chybu načtení | verify URL/key in `.env.local`, the connection, and that the tables are created |
+| the app reports a loading error | verify URL/key in `.env.local`, the connection, and that the tables are created |
 | Expo Go will not connect | same Wi-Fi, firewall, or `npx expo start --tunnel` |
 
 ## Development conventions
