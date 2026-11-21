@@ -20,6 +20,7 @@ from framepulse_agent.capture import (
     CaptureFailure,
     PresentMonCapture,
     classify_failure,
+    failure_from_exception,
 )
 from framepulse_agent.config import Config, normalize_exe
 from framepulse_agent.detection import (
@@ -296,13 +297,11 @@ class GameAgent:
         try:
             capture.start()
         except OSError as exc:
-            message = (
-                f"PresentMon failed to start ({exc}). "
-                "Run setup.bat or download_presentmon.py."
-            )
+            failure = failure_from_exception(exc)
+            LOG.error("PresentMon failed to start: %s", failure.message)
             self._block(candidate.process_name)
-            self._set_error(message)
-            self._notify("FramePulse", message)
+            self._set_error(failure.message)
+            self._notify("FramePulse", failure.message)
             return
 
         active.capture = capture

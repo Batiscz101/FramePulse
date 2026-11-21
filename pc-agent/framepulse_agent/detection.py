@@ -347,7 +347,7 @@ def enumerate_windows() -> list[WindowInfo]:
     try:
         user32.EnumWindows(WNDENUMPROC(callback), 0)
     except Exception:
-        LOG.exception("EnumWindows selhal")
+        LOG.exception("EnumWindows failed")
 
     return windows
 

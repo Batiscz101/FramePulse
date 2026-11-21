@@ -167,8 +167,8 @@ create policy "fps_samples_delete" on public.fps_samples
 -- 4. Grants
 -- ---------------------------------------------------------------------------
 
--- Hostované projekty je mají ve výchozím stavu, ale Supabase je postupně
--- dělá opt-in. Explicitní grant nic nerozbije a chrání před chybou
+-- Hosted projects are enabled by default, but Supabase is gradually making it
+-- opt-in. An explicit grant does not break anything and protects against the
 -- "permission denied for table ...".
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.games to anon, authenticated;

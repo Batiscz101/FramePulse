@@ -33,6 +33,8 @@ def _pythonw() -> Path:
 
 
 def build_command() -> str:
+    if getattr(sys, "frozen", False):
+        return f'"{Path(sys.executable).resolve()}"'
     launcher = BASE_DIR / "start_agent.pyw"
     return f'"{_pythonw()}" "{launcher}" --silent'
 

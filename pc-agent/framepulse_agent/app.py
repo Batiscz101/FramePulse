@@ -41,6 +41,23 @@ def _ensure_streams() -> None:
             setattr(sys, name, devnull)
 
 
+def _attach_parent_console() -> None:
+    """Shows --autostart output in cmd/PowerShell (the exe is a GUI subsystem app)."""
+    if os.name != "nt":
+        return
+    try:
+        if not ctypes.windll.kernel32.AttachConsole(-1):
+            return
+        for name in ("stdout", "stderr"):
+            try:
+                setattr(sys, name, open("CONOUT$", "w", encoding="utf-8", buffering=1))
+            except OSError:
+                pass
+    except Exception:
+        # No parent console (double-click) – registry changes still work.
+        pass
+
+
 def _message_box(message: str, *, title: str = APP_TITLE, error: bool = True) -> None:
     if os.name != "nt":
         return
@@ -69,12 +86,75 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="never show error dialogs (used at autostart)",
     )
+    parser.add_argument(
+        "--autostart",
+        choices=("enable", "disable", "status"),
+        default=None,
+        help="manage Windows autostart for this agent",
+    )
     return parser.parse_args(argv)
 
 
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "FramePulseAgent"
+
+
+def _autostart_value() -> str:
+    """Command line written to the Run registry value (frozen or source mode)."""
+    if getattr(sys, "frozen", False):
+        return f'"{Path(sys.executable).resolve()}"'
+    executable = Path(sys.executable)
+    if executable.name.lower() != "pythonw.exe":
+        alternative = executable.with_name("pythonw.exe")
+        if alternative.exists():
+            executable = alternative
+    launcher = Path(__file__).resolve().parent.parent / "start_agent.pyw"
+    return f'"{executable.resolve()}" "{launcher}" --silent'
+
+
+def _run_autostart(action: str) -> int:
+    """Manages the Windows Run autostart entry (`--autostart`)."""
+    try:
+        import winreg
+    except ImportError:  # pragma: no cover – only on non-Windows
+        print("Autostart is supported on Windows only.", file=sys.stderr)
+        return 1
+
+    value = _autostart_value()
+    if action == "enable":
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, value)
+        print(f"Autostart is enabled:\n  {value}")
+        return 0
+    if action == "disable":
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
+            ) as key:
+                winreg.DeleteValue(key, RUN_VALUE)
+        except FileNotFoundError:
+            print("Autostart is not enabled.")
+            return 1
+        print("Autostart is disabled.")
+        return 0
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            value, _kind = winreg.QueryValueEx(key, RUN_VALUE)
+    except FileNotFoundError:
+        print("Autostart is disabled.")
+        return 1
+    print(f"Autostart is enabled:\n  {value}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    if any(arg == "--autostart" or arg.startswith("--autostart=") for arg in raw_args):
+        _attach_parent_console()
     _ensure_streams()
-    args = _parse_args(list(sys.argv[1:] if argv is None else argv))
+    args = _parse_args(raw_args)
+    if args.autostart:
+        return _run_autostart(args.autostart)
     interactive = not args.silent
 
     if not acquire_instance_lock():
@@ -94,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     log_file = setup_logging(config.log_dir, debug=config.debug or args.debug)
-    LOG.info("FramePulse agent %s startuje.", __version__)
+    LOG.info("FramePulse agent %s starting.", __version__)
     LOG.info("Data: %s", config.data_dir)
     LOG.info("Log: %s", log_file)
     LOG.info("PresentMon: %s", config.presentmon_path)
@@ -110,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     if config.preflight_on_start:
         issue = preflight(config.presentmon_path)
         if issue is not None:
-            LOG.error("Kontrola PresentMonu: %s", issue.message)
+            LOG.error("PresentMon check: %s", issue.message)
 
     try:
         TrayApp(
@@ -131,3 +211,7 @@ def main(argv: list[str] | None = None) -> int:
 
     LOG.info("Agent exited.")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

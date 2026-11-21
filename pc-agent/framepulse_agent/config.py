@@ -1,8 +1,11 @@
 """Reading and validation of the agent configuration.
 
-The configuration is read from `pc-agent/config.json`. If the file does not
-exist, it is created with default values (including the Supabase connection).
-All paths in the configuration are relative to the `pc-agent/` folder.
+The configuration is read from `pc-agent/config.json` when running from source.
+In a PyInstaller build it is looked up next to `FramePulseAgent.exe` and then in
+`%LOCALAPPDATA%\\FramePulseAgent\\` – never inside the temporary `_MEIPASS`
+folder. If the file does not exist, it is created from `config.example.json`
+(or the built-in defaults). All relative paths are resolved against the folder
+with the executable (frozen) or the `pc-agent/` folder (source).
 """
 
 from __future__ import annotations
@@ -12,6 +15,8 @@ import logging
 import math
 import os
 import re
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -85,6 +90,139 @@ def default_data_dir() -> Path:
     return Path.home() / "AppData" / "Local" / APP_DATA_FOLDER
 
 
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def _frozen_exe_dir() -> Path:
+    return Path(sys.executable).resolve().parent
+
+
+def _bundle_dir() -> Path | None:
+    """Read-only folder PyInstaller extracted the one-file build into."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    return Path(meipass) if meipass else None
+
+
+def app_dir() -> Path:
+    """Folder with config.json: next to the exe (frozen) or pc-agent/ (source)."""
+    return _frozen_exe_dir() if is_frozen() else BASE_DIR
+
+
+def _is_writable_dir(directory: Path) -> bool:
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / ".framepulse-write-test"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def config_file() -> Path:
+    """Path of config.json: next to the exe, then %LOCALAPPDATA%, then source."""
+    if not is_frozen():
+        return CONFIG_FILE
+
+    exe_config = _frozen_exe_dir() / "config.json"
+    user_config = default_data_dir() / "config.json"
+    for candidate in (exe_config, user_config):
+        if candidate.exists():
+            return candidate
+    # First run: prefer a portable config next to the exe, but fall back to the
+    # user profile when the exe lives in a read-only folder (e.g. Program Files).
+    return exe_config if _is_writable_dir(exe_config.parent) else user_config
+
+
+def _example_config_file(config_path: Path) -> Path | None:
+    """Look for config.example.json next to the exe/data dir; bundled copy last."""
+    if not is_frozen():
+        return None
+
+    candidates = [
+        _frozen_exe_dir() / "config.example.json",
+        default_data_dir() / "config.example.json",
+        config_path.parent / "config.example.json",
+    ]
+    bundle = _bundle_dir()
+    if bundle is not None:
+        # Bundled example is read-only and only used when no editable copy exists.
+        candidates.append(bundle / "config.example.json")
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _download_presentmon(target: Path) -> None:
+    """Downloads the official PresentMon (2.x, x64) to `target` (GitHub latest)."""
+    import urllib.request
+
+    api_request = urllib.request.Request(
+        "https://api.github.com/repos/GameTechDev/PresentMon/releases/latest",
+        headers={
+            "User-Agent": "FramePulseAgent/1.0",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    with urllib.request.urlopen(api_request, timeout=30) as response:
+        release = json.loads(response.read().decode("utf-8"))
+
+    url = next(
+        (
+            str(asset["browser_download_url"])
+            for asset in release.get("assets", [])
+            if re.match(
+                r"^PresentMon-[\d.]+-x64\.exe$", str(asset.get("name", "")), re.IGNORECASE
+            )
+        ),
+        None,
+    )
+    if not url:
+        raise RuntimeError("No x64 console application in the latest PresentMon release.")
+
+    tmp = target.with_suffix(".exe.tmp")
+    request = urllib.request.Request(url, headers={"User-Agent": "FramePulseAgent/1.0"})
+    with urllib.request.urlopen(request, timeout=120) as response, tmp.open("wb") as handle:
+        shutil.copyfileobj(response, handle, length=64 * 1024)
+    with tmp.open("rb") as handle:
+        is_executable = handle.read(2) == b"MZ"
+    if tmp.stat().st_size < 200_000 or not is_executable:
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError("Downloaded PresentMon is not a valid Windows executable.")
+    tmp.replace(target)
+
+
+def _resolve_presentmon_frozen(data_dir: Path) -> Path:
+    """Locate PresentMon when frozen: bundled, next to the exe, or auto-download."""
+    # An updated copy next to the exe or in the user profile wins over the bundle.
+    search_roots = [_frozen_exe_dir(), data_dir]
+    bundle = _bundle_dir()
+    if bundle is not None:
+        search_roots.append(bundle)
+
+    for root in search_roots:
+        for candidate in (root / "PresentMon.exe", root / "tools" / "PresentMon.exe"):
+            if candidate.exists():
+                return candidate
+
+    # Nothing next to the exe or bundled – fetch it into the user profile.
+    target = data_dir / "tools" / "PresentMon.exe"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _download_presentmon(target)
+    except Exception as exc:
+        LOG.warning("Could not download PresentMon to %s: %s", target, exc)
+    return target
+
+
 @dataclass(frozen=True)
 class Config:
     supabase_url: str
@@ -145,7 +283,10 @@ def _exe_set(raw: dict[str, Any], key: str) -> frozenset[str]:
 
 def load_config(path: Path | None = None) -> Config:
     """Reads config.json; on first start, creates it with default values."""
-    config_path = path or CONFIG_FILE
+    if path is not None and is_frozen() and not path.is_absolute():
+        # A relative --config is resolved next to the exe, not the current directory.
+        path = _frozen_exe_dir() / path
+    config_path = path or config_file()
     raw: dict[str, Any] = {}
 
     if config_path.exists():
@@ -160,10 +301,24 @@ def load_config(path: Path | None = None) -> Config:
         raw = loaded
     else:
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(
-            json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-        LOG.info("Created default config.json: %s", config_path)
+        source = _example_config_file(config_path)
+        if source is not None:
+            try:
+                loaded = json.loads(source.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                loaded = None
+            if isinstance(loaded, dict) and loaded:
+                raw = loaded
+                try:
+                    config_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+                    LOG.info("Created config.json from %s: %s", source.name, config_path)
+                except OSError:
+                    pass
+        if not raw:
+            config_path.write_text(
+                json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            LOG.info("Created default config.json: %s", config_path)
 
     merged: dict[str, Any] = {**DEFAULT_CONFIG, **raw}
 
@@ -190,14 +345,16 @@ def load_config(path: Path | None = None) -> Config:
     elif not key.startswith("sb_publishable_"):
         warnings.append("supabase_key does not look like a publishable key (sb_publishable_…).")
 
-    presentmon = Path(str(merged.get("presentmon_path") or "tools/PresentMon.exe"))
-    if not presentmon.is_absolute():
-        presentmon = (BASE_DIR / presentmon).resolve()
-
     data_dir_raw = str(merged.get("data_dir") or "").strip()
     data_dir = Path(data_dir_raw) if data_dir_raw else default_data_dir()
     if not data_dir.is_absolute():
-        data_dir = (BASE_DIR / data_dir).resolve()
+        data_dir = (app_dir() / data_dir).resolve()
+
+    presentmon = Path(str(merged.get("presentmon_path") or "tools/PresentMon.exe"))
+    if not presentmon.is_absolute():
+        presentmon = (app_dir() / presentmon).resolve()
+    if is_frozen() and not presentmon.exists():
+        presentmon = _resolve_presentmon_frozen(data_dir)
 
     chunk = int(max(1.0, _number(merged, "upload_chunk_size", 500, 1)))
     config = Config(

@@ -34,6 +34,35 @@ PERMISSION_MARKERS = (
     "0x80070005",
 )
 
+# PresentMon is a native x64 executable built with the MSVC toolchain. A clean
+# Windows 10 install may not have the Visual C++ runtime yet.
+RUNTIME_MARKERS = (
+    "vcruntime140",
+    "msvcp140",
+    "concrt140",
+    "vccorlib140",
+    "api-ms-win-crt",
+    "visual c++",
+    "visual c++ redistributable",
+    "dll was not found",
+    "could not be located",
+    "code execution cannot proceed",
+    "the specified module could not be found",
+)
+
+PERMISSION_MESSAGE = (
+    "PresentMon does not have permission to capture frames (access denied). "
+    "Run the agent as an administrator, or add your account to the "
+    '"Performance Log Users" group and sign in again. '
+    "This applies to Windows 10 and Windows 11."
+)
+
+RUNTIME_MESSAGE = (
+    "PresentMon cannot start because the Microsoft Visual C++ Redistributable "
+    "is missing. Install the latest x64 Microsoft Visual C++ Redistributable "
+    "(2015-2022) and start the agent again."
+)
+
 # The frame length column, in priority order (all variants across versions).
 FRAME_TIME_COLUMNS = (
     "msbetweenpresents",
@@ -175,13 +204,11 @@ class CsvFrameParser:
 def classify_failure(text: str) -> CaptureFailure:
     lowered = (text or "").lower()
 
+    if any(marker in lowered for marker in RUNTIME_MARKERS):
+        return CaptureFailure("runtime", RUNTIME_MESSAGE)
+
     if any(marker in lowered for marker in PERMISSION_MARKERS):
-        return CaptureFailure(
-            "permission",
-            "PresentMon does not have permission (access denied). Run the agent as an "
-            "administrator, or add your account to the \"Performance Log Users\" group "
-            "and log in again.",
-        )
+        return CaptureFailure("permission", PERMISSION_MESSAGE)
 
     if "already running" in lowered or "existing session" in lowered:
         return CaptureFailure(
@@ -193,7 +220,22 @@ def classify_failure(text: str) -> CaptureFailure:
     if not first_line:
         first_line = "PresentMon exited without an error message."
 
-    return CaptureFailure("unknown", f"PresentMon selhal: {first_line}")
+    return CaptureFailure("unknown", f"PresentMon failed: {first_line}")
+
+
+def failure_from_exception(exc: BaseException) -> CaptureFailure:
+    """Maps an OSError from launching PresentMon to a user-readable failure."""
+    message = str(exc)
+    lowered = message.lower()
+    if getattr(exc, "winerror", None) == 126 or any(
+        marker in lowered for marker in RUNTIME_MARKERS
+    ):
+        return CaptureFailure("runtime", RUNTIME_MESSAGE)
+    return CaptureFailure(
+        "missing",
+        f"PresentMon could not start: {message}. "
+        "Rebuild the agent (build_exe.bat) or run setup.bat / download_presentmon.py.",
+    )
 
 
 def build_presentmon_args(
@@ -413,7 +455,7 @@ def preflight(exe_path: Path, timeout: float = 25.0) -> CaptureFailure | None:
     except subprocess.TimeoutExpired:
         return CaptureFailure("unknown", "PresentMon did not respond in time (timeout).")
     except OSError as exc:
-        return CaptureFailure("missing", f"PresentMon failed to start: {exc}")
+        return failure_from_exception(exc)
 
     if result.returncode == 0:
         return None

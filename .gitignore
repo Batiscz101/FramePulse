@@ -46,3 +46,7 @@ pc-agent/tools/PresentMon.exe
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# PyInstaller build output (pc-agent/build_exe.bat); dist/ is ignored above
+build/
+*.spec

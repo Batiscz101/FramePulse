@@ -6,6 +6,7 @@ from framepulse_agent.capture import (
     CsvFrameParser,
     build_presentmon_args,
     classify_failure,
+    failure_from_exception,
 )
 
 HEADER_V2 = (
@@ -84,6 +85,22 @@ class FailureClassificationTests(unittest.TestCase):
         failure = classify_failure(text)
         self.assertEqual(failure.kind, "permission")
         self.assertIn("Performance Log Users", failure.message)
+
+    def test_missing_visual_cpp_runtime(self) -> None:
+        text = (
+            "The code execution cannot proceed because VCRUNTIME140.dll was not found. "
+            "Reinstalling the program may fix this problem."
+        )
+        failure = classify_failure(text)
+        self.assertEqual(failure.kind, "runtime")
+        self.assertIn("Visual C++ Redistributable", failure.message)
+
+    def test_runtime_failure_from_launch_error(self) -> None:
+        failure = failure_from_exception(
+            OSError(2, "The specified module could not be found")
+        )
+        self.assertEqual(failure.kind, "runtime")
+        self.assertIn("x64", failure.message)
 
     def test_existing_session(self) -> None:
         failure = classify_failure("error: a session is already running.")

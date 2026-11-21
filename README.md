@@ -7,7 +7,7 @@ in **Supabase**, and a **mobile app** displays them as clean charts.
 ```
 ┌────────────────────┐   HTTPS/PostgREST   ┌────────────────────┐   HTTPS   ┌──────────────────────┐
 │      pc-agent      │ ──────────────────► │      Supabase      │ ◄──────── │      mobile-app      │
-│ Windows 11 + tray  │                     │ Postgres + RLS     │           │ Expo / React Native  │
+│ Windows 10/11 tray │                     │ Postgres + RLS     │           │ Expo / React Native  │
 │ PresentMon → FPS   │                     │ games, sessions,   │           │ game list + FPS graph│
 └────────────────────┘                     │ fps_samples        │           └──────────────────────┘
                                            └────────────────────┘
@@ -43,6 +43,8 @@ FPS_tracker/
 │  ├─ framepulse_agent/       agent source code
 │  ├─ tests/                  unittest suite
 │  ├─ setup.bat               one-time install (venv, dependencies, PresentMon)
+│  ├─ build_exe.bat           builds dist\FramePulseAgent.exe (PyInstaller)
+│  ├─ assets/                 application icon + generator
 │  ├─ start_agent.bat         launch the agent without a console
 │  ├─ start_agent.pyw         launcher for pythonw / autostart
 │  ├─ autostart.py            enable/disable start on login
@@ -64,8 +66,15 @@ FPS_tracker/
 | Part | Needs |
 | --- | --- |
 | Supabase | account and project (free tier is enough) |
-| pc-agent | Windows 11, Python 3.10+, PresentMon permissions |
+| pc-agent | Windows 10 (1809/1903+) or Windows 11, **64-bit**; Python 3.10+ only when running from source |
 | mobile-app | Node.js 22.13+ and npm, a phone with **Expo Go** (SDK 58) or a development build |
+
+> **Windows compatibility:** the agent runs on 64-bit Windows 10 (1809/1903 or
+> newer) and Windows 11. It does not call PowerShell at all – Windows
+> PowerShell 5.1 is enough for the optional commands in this README, and
+> PowerShell 7+ or Windows 11-only tools are never required. PresentMon also
+> needs the x64 Microsoft Visual C++ Redistributable 2015–2022; if it is
+> missing, the agent shows an English notification explaining what to install.
 
 ## 1. Supabase
 
@@ -172,6 +181,38 @@ opening the log, and quitting. Data and logs live in
 .venv\Scripts\python.exe -m compileall -q framepulse_agent tests
 .venv\Scripts\python.exe -m framepulse_agent --debug
 ```
+
+### Windows agent executable (FramePulseAgent.exe)
+
+To run the agent in the background without a console or Python installed, build
+a standalone executable:
+
+1. Run `setup.bat` in `pc-agent/` (creates `.venv`, installs dependencies,
+   downloads PresentMon).
+2. Run `build_exe.bat` in `pc-agent/`. It installs PyInstaller if needed,
+   bundles PresentMon and `config.example.json`, and creates
+   `pc-agent\dist\FramePulseAgent.exe` – a single file with the FramePulse icon,
+   built with `--noconsole --onefile --name FramePulseAgent`.
+3. Run `dist\FramePulseAgent.exe`. The tray agent starts without a console.
+   `config.json` is searched next to the exe first, then in
+   `%LOCALAPPDATA%\FramePulseAgent\`; if missing, it is created from the bundled
+   example (next to the exe, or in `%LOCALAPPDATA%` if that folder is
+   read-only). Fill in your Supabase values in the created file.
+
+   PresentMon is bundled inside the exe. A copy next to the exe or in
+   `%LOCALAPPDATA%\FramePulseAgent\` takes precedence; if none is found, the
+   agent downloads it to `%LOCALAPPDATA%\FramePulseAgent\tools\`.
+4. Start the agent at login (run from a terminal so the confirmation is
+   visible):
+
+   ```bat
+   dist\FramePulseAgent.exe --autostart enable
+   dist\FramePulseAgent.exe --autostart status
+   dist\FramePulseAgent.exe --autostart disable
+   ```
+
+   `enable` writes the full path to `FramePulseAgent.exe` into the
+   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` registry key.
 
 ## 3. Mobile app
 

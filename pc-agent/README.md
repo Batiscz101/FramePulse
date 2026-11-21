@@ -31,20 +31,69 @@ controlled via the icon in the system tray.
 
 ## Requirements
 
-- Windows 11, Python 3.10+ (tested on 3.14).
+- **Windows 10 version 1809/1903 or newer, or Windows 11 – 64-bit only.**
+- Python 3.10+ for running from source (tested on 3.14). The standalone exe
+  does not need Python.
 - `supabase_schema.sql` running in the Supabase project.
 - PresentMon permissions (see below).
+- Microsoft Visual C++ Redistributable 2015–2022 (x64), which PresentMon needs.
+  It is already present on most PCs; if it is missing, the agent shows an
+  English notification with the fix.
+
+## Windows compatibility
+
+- The agent uses only Python, `psutil` and the Win32 API through `ctypes`. It
+  never calls PowerShell, Windows 11-only commands or PowerShell 7+ features,
+  so Windows PowerShell 5.1 (or no PowerShell at all) is sufficient.
+- Game detection uses `EnumWindows`, `GetWindowRect`, `MonitorFromWindow` and
+  `psutil`, all available on Windows 10 1809/1903 and Windows 11.
+- PresentMon needs ETW permissions. Without them you get a clear English
+  notification (administrator or the `Performance Log Users` group).
 
 ## Installation
 
 1. Double-click **`setup.bat`**. It creates `.venv`, installs dependencies,
    downloads the official PresentMon to `tools/PresentMon.exe` and creates
    `config.json`.
-2. (Optional) edit `config.json` – the default values are enough.
+2. Edit `config.json` and fill in `supabase_url` and `supabase_key` from your
+   Supabase project (Project Settings → API).
 3. Start **`start_agent.bat`**. A pulse icon appears in the tray.
 
 The agent keeps a single instance – another launch only warns that it is
 already running.
+
+## Building the standalone executable (Windows)
+
+```bat
+cd pc-agent
+setup.bat        :: one-time: venv, dependencies, PresentMon download
+build_exe.bat    :: builds dist\FramePulseAgent.exe
+```
+
+- `dist\FramePulseAgent.exe` – a clean single-file build
+  (`--noconsole --onefile --name FramePulseAgent`) with the FramePulse icon,
+  PresentMon and `config.example.json` bundled inside.
+- Run it directly – the tray agent starts without a console. `config.json` is
+  looked up **next to the executable** first, then in
+  `%LOCALAPPDATA%\FramePulseAgent\`. If neither exists, it is created next to
+  the exe (or in `%LOCALAPPDATA%` when the exe folder is read-only) from the
+  bundled example. The temporary PyInstaller `_MEIPASS` folder is never used
+  for the configuration.
+- PresentMon is bundled inside the exe. A copy next to the exe
+  (`PresentMon.exe` or `tools\PresentMon.exe`) or in
+  `%LOCALAPPDATA%\FramePulseAgent\` takes precedence; if none is found, the
+  agent downloads it to `%LOCALAPPDATA%\FramePulseAgent\tools\PresentMon.exe`.
+- Autostart: run from a terminal so the confirmation is visible:
+
+  ```bat
+  dist\FramePulseAgent.exe --autostart enable
+  dist\FramePulseAgent.exe --autostart status
+  dist\FramePulseAgent.exe --autostart disable
+  ```
+
+  `enable` writes the full path to `FramePulseAgent.exe` into
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; `status` and `disable`
+  show or remove it.
 
 ## PresentMon permissions
 
@@ -84,7 +133,7 @@ Clicking the icon opens the menu:
 | --- | --- |
 | *(first row)* | status: waiting / game being measured with live FPS / paused / error |
 | Pause measuring | stops detecting games; a partial session is saved |
-| Odeslat frontu (N) | tries to send the sessions waiting in `outbox/` |
+| Send queue (N) | tries to send the sessions waiting in `outbox/` |
 | Open log | opens `agent.log` |
 | Open data folder | opens `%LOCALAPPDATA%\FramePulseAgent` |
 | Quit FramePulse | stops the agent; a partial session is saved to the queue |
@@ -104,19 +153,29 @@ It writes the value `FramePulseAgent` to
 `start_agent.pyw` via `pythonw.exe` with the `--silent` parameter (no error
 windows on login). No administrator is required.
 
-Alternative: put a shortcut to `start_agent.pyw` in the folder
+For the standalone executable use the built-in switch instead – it stores the
+path to the exe itself:
+
+```bat
+dist\FramePulseAgent.exe --autostart enable
+```
+
+Alternative: put a shortcut to `start_agent.pyw` (or to
+`FramePulseAgent.exe`) in the folder
 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`.
 
 ## Configuration (`config.json`)
 
 The file is created on first launch (or copied from `config.example.json`).
-Changes take effect after restarting the agent.
+Changes take effect after restarting the agent. When running from source it
+lives in `pc-agent/`; the standalone `FramePulseAgent.exe` looks next to itself
+first and then in `%LOCALAPPDATA%\FramePulseAgent\`.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `supabase_url` | project URL | `https://<ref>.supabase.co` |
 | `supabase_key` | publishable key | public key; data is protected by RLS |
-| `presentmon_path` | `tools/PresentMon.exe` | path to PresentMon (relative to `pc-agent/`) |
+| `presentmon_path` | `tools/PresentMon.exe` | path to PresentMon (relative to the agent/exe folder) |
 | `poll_interval_seconds` | `2.0` | how often visible windows are checked |
 | `sample_interval_seconds` | `2.0` | length of one graph point |
 | `min_session_seconds` | `15` | shorter sessions are not saved |
@@ -160,11 +219,14 @@ The database receives:
 | Symptom | Solution |
 | --- | --- |
 | `The Supabase tables are not created` (PGRST205) | run `supabase_schema.sql` in the SQL Editor |
-| icon red, „access denied“ | missing PresentMon permissions (see above) |
+| icon red, „access denied“ | missing PresentMon permissions (see above); applies to Windows 10 and 11 |
+| `VCRUNTIME140.dll was not found` / `Visual C++` notification | install the x64 Microsoft Visual C++ Redistributable 2015–2022, then restart the agent |
 | icon does not appear | check `logs\agent.log`; run `setup.bat` if dependencies are missing |
 | game is not measured | look for „Game detected“ in the log; optionally add the `.exe` to `force_games`; after a failure the 15-minute cooldown applies |
 | the session did not appear in the app | check `outbox/` and the *Send queue* button; the log contains the reason for the error |
-| antivirus asks about `pythonw.exe` | allow it; the agent needs only window reading and network access |
+| antivirus asks about `pythonw.exe` / `FramePulseAgent.exe` | allow it; the agent needs only window reading and network access |
+| the exe starts but does not upload | check `logs\agent.log`; `config.json` next to the exe still has the sample Supabase values |
+| the exe does not create `config.json` | the exe folder is read-only; the file is then created in `%LOCALAPPDATA%\FramePulseAgent\` |
 
 ## Development and tests
 
@@ -197,11 +259,14 @@ pc-agent/
 │  └─ …
 ├─ tests/               unittest suite
 ├─ tools/PresentMon.exe downloaded by setup.bat / download_presentmon.py
+├─ assets/              application icon (framepulse.ico) + generator
+├─ build_exe.bat        builds dist\FramePulseAgent.exe (PyInstaller)
 ├─ setup.bat            one-time install
 ├─ start_agent.bat      start without console
 ├─ start_agent.pyw      launcher for pythonw / autostart
 ├─ autostart.py         HKCU Run enable/disable/status
-└─ config.json          created on first launch
+├─ config.json          created on first launch (ignored by git)
+└─ dist/                build output, ignored by git
 ```
 
 ## Notes
