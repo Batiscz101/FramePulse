@@ -22,6 +22,9 @@ web-build/
 *.tsbuildinfo
 .metro-health-check*
 
+# Generated native Android project (Expo continuous native generation)
+mobile-app/android/
+
 # --- Local configuration and secrets ---------------------------------------
 # All .env files are local; .env.example (the pattern without secrets) stays.
 .env*
