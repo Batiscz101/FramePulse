@@ -94,6 +94,13 @@ export function toClock(minutesSinceMidnight: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+/** Epoch milliseconds -> local `HH:MM` of the last successful sync. */
+export function formatSyncTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return toClock(date.getHours() * 60 + date.getMinutes());
+}
+
 export function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;

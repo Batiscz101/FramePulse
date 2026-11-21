@@ -1,12 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { ChevronLeft, Pencil } from 'lucide-react-native';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DayPill } from '@/components/day-pill';
 import { FpsChart } from '@/components/fps-chart';
 import { GameFormModal } from '@/components/game-form-modal';
+import { OfflineBadge } from '@/components/offline-badge';
 import { useGame } from '@/hooks/use-game';
 import { useSessionSamples } from '@/hooks/use-session-samples';
 import {
@@ -18,7 +26,8 @@ import {
 } from '@/lib/format';
 import { daysCount, sessionsCount } from '@/lib/i18n';
 import { useI18n } from '@/lib/i18n-context';
-import { palette, tabularNums } from '@/lib/theme';
+import { tabularNums } from '@/lib/theme';
+import { useTheme } from '@/lib/theme-context';
 import { durationMinutes } from '@/types/telemetry';
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -44,9 +53,19 @@ export default function GameDetailScreen() {
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
 
   const { language, t } = useI18n();
-  const { game, state, error, reload, rename } = useGame(gameId);
+  const { colors } = useTheme();
+  const {
+    game,
+    state,
+    error,
+    reload,
+    rename,
+    offline: gameOffline,
+    lastSync: gameSyncedAt,
+  } = useGame(gameId);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [renameVisible, setRenameVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const sessions = useMemo(() => game?.sessions ?? [], [game]);
 
@@ -59,7 +78,20 @@ export default function GameDetailScreen() {
     samples,
     state: samplesState,
     error: samplesError,
+    offline: samplesOffline,
+    lastSync: samplesSyncedAt,
+    reload: reloadSamples,
   } = useSessionSamples(session?.id);
+
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    reloadSamples();
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload, reloadSamples]);
 
   const olderSession = useMemo(() => {
     if (!session) return undefined;
@@ -85,11 +117,14 @@ export default function GameDetailScreen() {
     }
   };
 
+  const offline = gameOffline || samplesOffline;
+  const lastSync = gameSyncedAt ?? samplesSyncedAt;
+
   if (state === 'loading' && !game) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 bg-canvas">
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color={palette.muted} />
+          <ActivityIndicator color={colors.muted} />
           <Text className="mt-3 text-[12px] text-muted">{t('loadingGame')}</Text>
         </View>
       </SafeAreaView>
@@ -109,7 +144,7 @@ export default function GameDetailScreen() {
               onPress={reload}
               accessibilityRole="button"
               accessibilityLabel={t('retry')}
-              className="rounded-full border border-hairline bg-[#18181C] px-4 py-2"
+              className="rounded-full border border-hairline bg-raised px-4 py-2"
               style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
             >
               <Text className="text-[12px] font-medium text-ink">{t('retry')}</Text>
@@ -136,6 +171,15 @@ export default function GameDetailScreen() {
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshAll}
+            tintColor={colors.muted}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.surface}
+          />
+        }
       >
         <View className="mt-2 flex-row items-center gap-3">
           <Pressable
@@ -146,7 +190,7 @@ export default function GameDetailScreen() {
             className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-surface"
             style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
           >
-            <ChevronLeft size={18} color={palette.ink} strokeWidth={2} />
+            <ChevronLeft size={18} color={colors.ink} strokeWidth={2} />
           </Pressable>
           <View className="flex-1">
             <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
@@ -155,6 +199,11 @@ export default function GameDetailScreen() {
             <Text className="mt-0.5 text-[11px] text-faint" numberOfLines={1}>
               {game.processName ?? t('manualGame')} · {sessionsCount(language, sessions.length)}
             </Text>
+            {offline ? (
+              <View className="mt-1.5">
+                <OfflineBadge lastSync={lastSync} />
+              </View>
+            ) : null}
           </View>
           <Pressable
             onPress={() => setRenameVisible(true)}
@@ -164,7 +213,7 @@ export default function GameDetailScreen() {
             className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-surface"
             style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
           >
-            <Pencil size={15} color={palette.muted} strokeWidth={2} />
+            <Pencil size={15} color={colors.muted} strokeWidth={2} />
           </Pressable>
         </View>
 
@@ -251,7 +300,7 @@ export default function GameDetailScreen() {
                 <View className="mt-3.5">
                   {samplesState === 'loading' ? (
                     <View className="items-center rounded-2xl border border-hairline bg-surface px-4 py-10">
-                      <ActivityIndicator color={palette.muted} />
+                      <ActivityIndicator color={colors.muted} />
                       <Text className="mt-3 text-[11px] text-muted">{t('loadingChart')}</Text>
                     </View>
                   ) : samplesState === 'error' ? (

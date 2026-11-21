@@ -21,6 +21,12 @@ const en = {
   addGameSubmit: 'Add',
   renameGame: 'Rename game',
   languageToggle: 'Switch language',
+  themeToggle: 'Switch theme',
+  themeDark: 'Dark',
+  themeLight: 'Light',
+  offlineBadge: 'Offline data',
+  offlineSynced: 'synced {time}',
+  offlineHint: 'Showing data saved on this device.',
 
   /* Game list */
   gamesTitle: 'Your games',
@@ -94,6 +100,12 @@ const cs: Record<TranslationKey, string> = {
   addGameSubmit: 'Přidat',
   renameGame: 'Přejmenovat hru',
   languageToggle: 'Přepnout jazyk',
+  themeToggle: 'Přepnout motiv',
+  themeDark: 'Tmavý',
+  themeLight: 'Světlý',
+  offlineBadge: 'Offline data',
+  offlineSynced: 'staženo {time}',
+  offlineHint: 'Zobrazují se data uložená v tomto zařízení.',
 
   gamesTitle: 'Vaše hry',
   pcTelemetry: 'telemetrie z PC',

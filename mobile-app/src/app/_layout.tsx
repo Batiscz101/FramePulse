@@ -4,22 +4,34 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { I18nProvider } from '@/lib/i18n-context';
-import { palette } from '@/lib/theme';
+import { ThemeProvider, useTheme } from '@/lib/theme-context';
 
 export default function RootLayout() {
   return (
-    <I18nProvider>
-      <StatusBar style="light" />
+    <ThemeProvider>
+      <I18nProvider>
+        <ThemedStack />
+      </I18nProvider>
+    </ThemeProvider>
+  );
+}
+
+function ThemedStack() {
+  const { mode, colors } = useTheme();
+
+  return (
+    <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: palette.canvas },
+          contentStyle: { backgroundColor: colors.canvas },
           animation: 'slide_from_right',
         }}
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="game/[id]" />
       </Stack>
-    </I18nProvider>
+    </>
   );
 }

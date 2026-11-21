@@ -5,7 +5,8 @@ import { LineChart } from 'react-native-gifted-charts';
 import { formatTimeRange, toClock } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
 import { pointsCount } from '@/lib/i18n';
-import { palette, tabularNums } from '@/lib/theme';
+import { tabularNums } from '@/lib/theme';
+import { useTheme } from '@/lib/theme-context';
 import { durationMinutes, type FpsSample, type GameSession } from '@/types/telemetry';
 
 type FpsChartProps = {
@@ -44,6 +45,7 @@ function buildAxis(samples: FpsSample[]): Axis {
 
 export function FpsChart({ session, samples }: FpsChartProps) {
   const { language, t } = useI18n();
+  const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
 
   const axis = useMemo(() => buildAxis(samples), [samples]);
@@ -77,11 +79,11 @@ export function FpsChart({ session, samples }: FpsChartProps) {
           curved
           curvature={0.15}
           thickness={2}
-          color={palette.accent}
+          color={colors.accent}
           hideDataPoints
           areaChart
-          startFillColor={palette.accent}
-          endFillColor={palette.accent}
+          startFillColor={colors.accent}
+          endFillColor={colors.accent}
           startOpacity={0.2}
           endOpacity={0}
           yAxisOffset={axis.min}
@@ -91,23 +93,23 @@ export function FpsChart({ session, samples }: FpsChartProps) {
           yAxisLabelSuffix=""
           roundToDigits={0}
           yAxisTextStyle={{
-            color: palette.faint,
+            color: colors.faint,
             fontSize: 9,
             ...tabularNums,
           }}
           yAxisColor="transparent"
-          xAxisColor={palette.hairline}
+          xAxisColor={colors.hairline}
           xAxisThickness={1}
-          rulesColor={palette.grid}
+          rulesColor={colors.grid}
           rulesThickness={1}
           showVerticalLines={false}
           pointerConfig={{
             activatePointersInstantlyOnTouch: true,
             showPointerStrip: true,
-            pointerStripColor: '#3F3F46',
+            pointerStripColor: colors.strip,
             pointerStripWidth: 1,
             pointerStripHeight: 168,
-            pointerColor: palette.ink,
+            pointerColor: colors.ink,
             radius: 4,
             pointerLabelWidth: 92,
             pointerLabelHeight: 46,
@@ -120,7 +122,7 @@ export function FpsChart({ session, samples }: FpsChartProps) {
               const sample = samples[index];
               const fps = items?.[0]?.value ?? sample?.fps ?? 0;
               return (
-                <View className="items-center rounded-lg border border-[#3F3F46] bg-[#1C1C20] px-2.5 py-1.5">
+                <View className="items-center rounded-lg border border-tooltip-border bg-tooltip px-2.5 py-1.5">
                   <Text className="text-[9px] font-medium uppercase tracking-[1px] text-faint">
                     {clockAt(sample) || '—'}
                   </Text>

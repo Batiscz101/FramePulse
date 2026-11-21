@@ -28,8 +28,6 @@ export type Game = {
   createdAt: string;
   /** Two-letter badge derived from the name. */
   shortName: string;
-  /** Muted accent colour derived from the id. */
-  accent: string;
   /** Newest session first. */
   sessions: GameSession[];
 };
@@ -65,6 +63,9 @@ export type SampleRow = {
 /* -------------------------------------------------------------------------- */
 
 const ACCENTS = ['#9BC7B2', '#DDA45E', '#C98A7D', '#8FA5C8', '#A9A0C9', '#B8C48F'] as const;
+
+/** Darker equivalents keep the badge readable on white cards. */
+const LIGHT_ACCENTS = ['#3F7F68', '#9A6B2F', '#9A5A4C', '#4F6A94', '#6B6396', '#6D7A42'] as const;
 
 function hashSeed(value: string): number {
   let hash = 2166136261;
@@ -107,8 +108,9 @@ export function localPlayParts(isoTimestamp: string): {
   };
 }
 
-export function accentFor(id: string): string {
-  return ACCENTS[hashSeed(id) % ACCENTS.length];
+export function accentFor(id: string, mode: 'dark' | 'light' = 'dark'): string {
+  const accents = mode === 'light' ? LIGHT_ACCENTS : ACCENTS;
+  return accents[hashSeed(id) % accents.length];
 }
 
 export function shortNameFor(name: string): string {
@@ -149,7 +151,6 @@ export function mapGame(row: GameRow): Game {
     processName: row.process_name,
     createdAt: row.created_at,
     shortName: shortNameFor(row.name),
-    accent: accentFor(row.id),
     sessions,
   };
 }

@@ -15,15 +15,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GameCard } from '@/components/game-card';
 import { GameFormModal, type GameFormValues } from '@/components/game-form-modal';
 import { LanguageToggle } from '@/components/language-toggle';
+import { OfflineBadge } from '@/components/offline-badge';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useGames } from '@/hooks/use-games';
 import { gamesCount } from '@/lib/i18n';
 import { useI18n } from '@/lib/i18n-context';
 import { createGame } from '@/lib/telemetry-api';
-import { palette } from '@/lib/theme';
+import { tabularNums } from '@/lib/theme';
+import { useTheme } from '@/lib/theme-context';
 
 export default function GamesScreen() {
   const { language, t } = useI18n();
-  const { games, state, error, refreshing, refresh } = useGames();
+  const { colors } = useTheme();
+  const { games, state, error, refreshing, refresh, offline, lastSync } = useGames();
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
 
@@ -57,9 +61,9 @@ export default function GamesScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refresh}
-            tintColor={palette.muted}
-            colors={[palette.accent]}
-            progressBackgroundColor={palette.surface}
+            tintColor={colors.muted}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.surface}
           />
         }
         ListHeaderComponent={
@@ -75,10 +79,16 @@ export default function GamesScreen() {
                 <Text className="mt-1.5 text-[13px] text-muted">
                   {gamesCount(language, games.length)} · {t('pcTelemetry')}
                 </Text>
+                {offline ? (
+                  <View className="mt-2">
+                    <OfflineBadge lastSync={lastSync} />
+                  </View>
+                ) : null}
               </View>
 
               <View className="mt-1 flex-row items-center gap-2">
                 <LanguageToggle />
+                <ThemeToggle />
 
                 <Pressable
                   onPress={() => setAddVisible(true)}
@@ -88,19 +98,19 @@ export default function GamesScreen() {
                   className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-surface"
                   style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                 >
-                  <Plus size={18} color={palette.ink} strokeWidth={2} />
+                  <Plus size={18} color={colors.ink} strokeWidth={2} />
                 </Pressable>
               </View>
             </View>
 
             <View className="mt-5 h-11 flex-row items-center gap-2.5 rounded-2xl border border-hairline bg-surface px-3.5">
-              <Search size={16} color={palette.faint} strokeWidth={2} />
+              <Search size={16} color={colors.faint} strokeWidth={2} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
                 placeholder={t('searchGames')}
-                placeholderTextColor={palette.faint}
-                selectionColor={palette.accent}
+                placeholderTextColor={colors.faint}
+                selectionColor={colors.accent}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
@@ -114,7 +124,7 @@ export default function GamesScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={t('clearSearch')}
                 >
-                  <X size={14} color={palette.muted} strokeWidth={2} />
+                  <X size={14} color={colors.muted} strokeWidth={2} />
                 </Pressable>
               ) : null}
             </View>
@@ -123,7 +133,7 @@ export default function GamesScreen() {
               <Text className="text-[10px] font-medium uppercase tracking-[1.5px] text-faint">
                 {t('recentlyPlayed')}
               </Text>
-              <Text className="text-[10px] text-faint" style={{ fontVariant: ['tabular-nums'] }}>
+              <Text className="text-[10px] text-faint" style={tabularNums}>
                 {filteredGames.length} / {games.length}
               </Text>
             </View>
@@ -132,7 +142,7 @@ export default function GamesScreen() {
         ListEmptyComponent={
           loading ? (
             <View className="mt-2 items-center rounded-2xl border border-hairline bg-surface px-6 py-10">
-              <ActivityIndicator color={palette.muted} />
+              <ActivityIndicator color={colors.muted} />
               <Text className="mt-3 text-[12px] text-muted">{t('loadingTelemetry')}</Text>
             </View>
           ) : state === 'error' ? (
@@ -143,7 +153,7 @@ export default function GamesScreen() {
                 onPress={refresh}
                 accessibilityRole="button"
                 accessibilityLabel={t('retry')}
-                className="mt-4 self-start rounded-full border border-hairline bg-[#18181C] px-4 py-2"
+                className="mt-4 self-start rounded-full border border-hairline bg-raised px-4 py-2"
                 style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
               >
                 <Text className="text-[12px] font-medium text-ink">{t('retry')}</Text>
@@ -162,13 +172,13 @@ export default function GamesScreen() {
                 className="mt-4 flex-row items-center gap-1.5 rounded-full bg-ink px-4 py-2"
                 style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
               >
-                <Plus size={14} color={palette.canvas} strokeWidth={2.4} />
+                <Plus size={14} color={colors.canvas} strokeWidth={2.4} />
                 <Text className="text-[12px] font-semibold text-canvas">{t('addGame')}</Text>
               </Pressable>
             </View>
           ) : (
             <View className="mt-2 items-center rounded-2xl border border-hairline bg-surface px-6 py-10">
-              <Search size={20} color={palette.faint} strokeWidth={1.8} />
+              <Search size={20} color={colors.faint} strokeWidth={1.8} />
               <Text className="mt-3 text-[14px] font-medium text-ink">
                 {t('nothingFoundTitle')}
               </Text>

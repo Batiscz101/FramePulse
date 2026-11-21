@@ -4,7 +4,8 @@ import { Pressable, Text, View } from 'react-native';
 import { formatFps, formatShortDate } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
 import { tabularNums } from '@/lib/theme';
-import type { Game } from '@/types/telemetry';
+import { useTheme } from '@/lib/theme-context';
+import { accentFor, type Game } from '@/types/telemetry';
 
 type GameCardProps = {
   game: Game;
@@ -12,6 +13,7 @@ type GameCardProps = {
 
 export function GameCard({ game }: GameCardProps) {
   const { language, t } = useI18n();
+  const { mode } = useTheme();
   const session = game.sessions[0];
   const source = game.processName ?? 'PC';
 
@@ -30,10 +32,10 @@ export function GameCard({ game }: GameCardProps) {
         className="flex-row items-center gap-3.5 rounded-2xl border border-hairline bg-surface px-4 py-3.5"
         style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
       >
-        <View className="h-11 w-11 items-center justify-center rounded-xl border border-hairline bg-[#18181C]">
+        <View className="h-11 w-11 items-center justify-center rounded-xl border border-hairline bg-raised">
           <Text
             className="text-[13px] font-semibold tracking-wide"
-            style={{ color: game.accent }}
+            style={{ color: accentFor(game.id, mode) }}
           >
             {game.shortName}
           </Text>

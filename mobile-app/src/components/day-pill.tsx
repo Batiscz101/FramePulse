@@ -28,7 +28,7 @@ export function DayPill({ date, caption, selected, onPress }: DayPillProps) {
     >
       <Text
         className={`text-[9px] font-medium uppercase tracking-[1.2px] ${
-          selected ? 'text-[#52525B]' : 'text-faint'
+          selected ? 'text-on-ink-muted' : 'text-faint'
         }`}
         style={tabularNums}
       >

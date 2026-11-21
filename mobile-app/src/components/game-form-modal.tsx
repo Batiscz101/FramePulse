@@ -12,7 +12,8 @@ import {
 
 import { useI18n } from '@/lib/i18n-context';
 import { describeError } from '@/lib/telemetry-api';
-import { palette } from '@/lib/theme';
+import { themeVariables } from '@/lib/theme';
+import { useTheme } from '@/lib/theme-context';
 
 export type GameFormValues = {
   name: string;
@@ -44,6 +45,8 @@ export function GameFormModal({
   onSubmit,
 }: GameFormModalProps) {
   const { language, t } = useI18n();
+  const { mode, colors } = useTheme();
+  const variables = themeVariables(mode);
   const [name, setName] = useState(initialName);
   const [processName, setProcessName] = useState(initialProcessName);
   const [busy, setBusy] = useState(false);
@@ -80,7 +83,8 @@ export function GameFormModal({
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1 justify-center bg-black/70 px-5"
+        className={`flex-1 justify-center px-5 ${mode === 'dark' ? 'bg-black/70' : 'bg-black/30'}`}
+        style={variables}
       >
         <Pressable
           className="absolute inset-0"
@@ -102,15 +106,15 @@ export function GameFormModal({
             value={name}
             onChangeText={setName}
             placeholder={t('gameNamePlaceholder')}
-            placeholderTextColor={palette.faint}
-            selectionColor={palette.accent}
+            placeholderTextColor={colors.faint}
+            selectionColor={colors.accent}
             autoFocus
             autoCapitalize="words"
             autoCorrect={false}
             returnKeyType="done"
             onSubmitEditing={handleSubmit}
             accessibilityLabel={t('gameName')}
-            className="mt-1.5 h-11 rounded-xl border border-hairline bg-[#18181C] px-3.5 text-[14px] text-ink"
+            className="mt-1.5 h-11 rounded-xl border border-hairline bg-raised px-3.5 text-[14px] text-ink"
           />
 
           {withProcessName ? (
@@ -122,14 +126,14 @@ export function GameFormModal({
                 value={processName}
                 onChangeText={setProcessName}
                 placeholder={t('processPlaceholder')}
-                placeholderTextColor={palette.faint}
-                selectionColor={palette.accent}
+                placeholderTextColor={colors.faint}
+                selectionColor={colors.accent}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
                 onSubmitEditing={handleSubmit}
                 accessibilityLabel={t('processName')}
-                className="mt-1.5 h-11 rounded-xl border border-hairline bg-[#18181C] px-3.5 text-[13px] text-ink"
+                className="mt-1.5 h-11 rounded-xl border border-hairline bg-raised px-3.5 text-[13px] text-ink"
               />
             </>
           ) : null}
@@ -149,7 +153,7 @@ export function GameFormModal({
               disabled={busy}
               accessibilityRole="button"
               accessibilityLabel={t('cancel')}
-              className="h-11 flex-1 items-center justify-center rounded-xl border border-hairline bg-[#18181C]"
+              className="h-11 flex-1 items-center justify-center rounded-xl border border-hairline bg-raised"
               style={({ pressed }) => ({ opacity: pressed || busy ? 0.6 : 1 })}
             >
               <Text className="text-[13px] font-medium text-ink">{t('cancel')}</Text>
@@ -165,7 +169,7 @@ export function GameFormModal({
               style={({ pressed }) => ({ opacity: !canSubmit ? 0.4 : pressed ? 0.8 : 1 })}
             >
               {busy ? (
-                <ActivityIndicator size="small" color={palette.canvas} />
+                <ActivityIndicator size="small" color={colors.canvas} />
               ) : (
                 <Text className="text-[13px] font-semibold text-canvas">{submitLabel}</Text>
               )}
