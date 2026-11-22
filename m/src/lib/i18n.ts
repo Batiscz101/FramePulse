@@ -79,6 +79,46 @@ const en = {
   processPlaceholder: 'e.g. Cyberpunk2077.exe',
   processName: 'Process name',
 
+  /* Live status ("Právě hraji") */
+  liveNow: 'Právě hraji',
+
+  /* Session details: badges, telemetry, note, compare */
+  badgeResolution: 'Resolution',
+  badgeDisplayMode: 'Window mode',
+  badgeGraphicsApi: 'Graphics API',
+  badgeQualityPreset: 'Quality preset',
+  badgeDlss: 'DLSS',
+  badgeFsr: 'FSR',
+  badgeRayTracing: 'Ray Tracing',
+  badgeVsync: 'V-Sync',
+  badgeFpsLimit: 'FPS limit',
+  telemetryTitle: 'Hardware telemetry',
+  telemetryGpuTempAvg: 'GPU temp (avg)',
+  telemetryGpuTempMax: 'GPU temp (max)',
+  telemetryGpuLoad: 'GPU load',
+  telemetryCpuTempAvg: 'CPU temp (avg)',
+  telemetryCpuLoad: 'CPU load',
+  noteLabel: 'Note',
+  notePlaceholder: 'e.g. Ultra + DLSS Quality',
+  noteSaved: 'Saved',
+
+  /* Session compare */
+  compareSessions: 'Compare sessions',
+  compareTitle: 'Relace A vs. Relace B',
+  comparePickA: 'Tap to select session A',
+  comparePickB: 'Tap to select session B',
+  compareClose: 'Close',
+  compareAvgFps: 'Avg FPS',
+  compareLow1: '1% Lows',
+  compareLow01: '0.1% Lows',
+  compareFrameTime: 'Frame Time (ms)',
+  compareGpuTempAvg: 'GPU temp (avg)',
+  compareGpuTempMax: 'GPU temp (max)',
+  compareGpuLoad: 'GPU load',
+  compareCpuTemp: 'CPU temp',
+  compareCpuLoad: 'CPU load',
+  compareSettings: 'Settings',
+
   /* Errors */
   errorSchemaMissing: 'Supabase tables are missing. Run supabase_schema.sql in the SQL Editor.',
   errorPermission:
@@ -153,6 +193,46 @@ const cs: Record<TranslationKey, string> = {
   processOptional: 'Proces (nepovinné)',
   processPlaceholder: 'Např. Cyberpunk2077.exe',
   processName: 'Název procesu',
+
+  /* Live status ("Právě hraji") */
+  liveNow: 'Právě hraji',
+
+  /* Session details: badges, telemetry, note, compare */
+  badgeResolution: 'Rozlišení',
+  badgeDisplayMode: 'Režim okna',
+  badgeGraphicsApi: 'Grafické API',
+  badgeQualityPreset: 'Preset kvality',
+  badgeDlss: 'DLSS',
+  badgeFsr: 'FSR',
+  badgeRayTracing: 'Ray Tracing',
+  badgeVsync: 'V-Sync',
+  badgeFpsLimit: 'FPS limit',
+  telemetryTitle: 'Hardwarová telemetrie',
+  telemetryGpuTempAvg: 'Teplota GPU (průměr)',
+  telemetryGpuTempMax: 'Teplota GPU (max)',
+  telemetryGpuLoad: 'Vytížení GPU',
+  telemetryCpuTempAvg: 'Teplota CPU (průměr)',
+  telemetryCpuLoad: 'Vytížení CPU',
+  noteLabel: 'Poznámka',
+  notePlaceholder: 'např. Ultra + DLSS Quality',
+  noteSaved: 'Uloženo',
+
+  /* Session compare */
+  compareSessions: 'Porovnat relace',
+  compareTitle: 'Relace A vs. Relace B',
+  comparePickA: 'Klepněte pro výběr relace A',
+  comparePickB: 'Klepněte pro výběr relace B',
+  compareClose: 'Zavřít',
+  compareAvgFps: 'Průměrné FPS',
+  compareLow1: '1% Lows',
+  compareLow01: '0.1% Lows',
+  compareFrameTime: 'Čas snímku (ms)',
+  compareGpuTempAvg: 'Teplota GPU (průměr)',
+  compareGpuTempMax: 'Teplota GPU (max)',
+  compareGpuLoad: 'Vytížení GPU',
+  compareCpuTemp: 'Teplota CPU',
+  compareCpuLoad: 'Vytížení CPU',
+  compareSettings: 'Nastavení',
 
   errorSchemaMissing: 'Tabulky v Supabase nejsou vytvořené. Spusťte supabase_schema.sql v SQL Editoru.',
   errorPermission:

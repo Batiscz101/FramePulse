@@ -15,9 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GameCard } from '@/components/game-card';
 import { GameFormModal, type GameFormValues } from '@/components/game-form-modal';
 import { LanguageToggle } from '@/components/language-toggle';
+import { LiveNowCard } from '@/components/live-now-card';
 import { OfflineBadge } from '@/components/offline-badge';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useGames } from '@/hooks/use-games';
+import { useLiveStatus } from '@/hooks/use-live-status';
 import { gamesCount } from '@/lib/i18n';
 import { useI18n } from '@/lib/i18n-context';
 import { createGame } from '@/lib/telemetry-api';
@@ -28,6 +30,7 @@ export default function GamesScreen() {
   const { language, t } = useI18n();
   const { colors } = useTheme();
   const { games, state, error, refreshing, refresh, offline, lastSync } = useGames();
+  const live = useLiveStatus();
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
 
@@ -67,7 +70,9 @@ export default function GamesScreen() {
           />
         }
         ListHeaderComponent={
-          <View className="pb-5 pt-6">
+          <>
+            <LiveNowCard status={live} />
+            <View className="pb-5 pt-6">
             <View className="flex-row items-start justify-between">
               <View className="flex-1">
                 <Text className="text-[10px] font-semibold uppercase tracking-[2.5px] text-faint">
@@ -138,6 +143,7 @@ export default function GamesScreen() {
               </Text>
             </View>
           </View>
+          </>
         }
         ListEmptyComponent={
           loading ? (

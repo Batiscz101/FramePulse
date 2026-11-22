@@ -15,6 +15,10 @@ import { DayPill } from '@/components/day-pill';
 import { FpsChart } from '@/components/fps-chart';
 import { GameFormModal } from '@/components/game-form-modal';
 import { OfflineBadge } from '@/components/offline-badge';
+import { SessionCompareModal } from '@/components/session-compare';
+import { SessionInfoBadges } from '@/components/session-info-badges';
+import { SessionNoteEditor } from '@/components/session-note-editor';
+import { SessionTelemetry } from '@/components/session-telemetry';
 import { useGame } from '@/hooks/use-game';
 import { useSessionSamples } from '@/hooks/use-session-samples';
 import {
@@ -65,6 +69,8 @@ export default function GameDetailScreen() {
   } = useGame(gameId);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [renameVisible, setRenameVisible] = useState(false);
+  const [compareVisible, setCompareVisible] = useState(false);
+  const [noteVisible, setNoteVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const sessions = useMemo(() => game?.sessions ?? [], [game]);
@@ -254,6 +260,18 @@ export default function GameDetailScreen() {
               ))}
             </ScrollView>
 
+            {sessions.length >= 2 ? (
+              <Pressable
+                onPress={() => setCompareVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('compareSessions')}
+                className="mt-4 self-start rounded-full border border-hairline bg-surface px-3.5 py-2"
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              >
+                <Text className="text-[11px] font-medium text-ink">{t('compareSessions')}</Text>
+              </Pressable>
+            ) : null}
+
             {session ? (
               <>
                 <View className="mt-5 rounded-2xl border border-hairline bg-surface p-5">
@@ -296,6 +314,18 @@ export default function GameDetailScreen() {
                     </Text>
                   </View>
                 </View>
+
+                <SessionInfoBadges session={session} />
+                <SessionTelemetry session={session} />
+                <Pressable
+                  onPress={() => setNoteVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('noteLabel')}
+                  className="mt-4 self-start rounded-full border border-hairline bg-surface px-3.5 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                  <Text className="text-[11px] font-medium text-ink">{t('noteLabel')}</Text>
+                </Pressable>
 
                 <View className="mt-3.5">
                   {samplesState === 'loading' ? (
@@ -341,6 +371,20 @@ export default function GameDetailScreen() {
           onClose={() => setRenameVisible(false)}
           onSubmit={async (values) => {
             await rename(values.name);
+          }}
+        />
+      ) : null}
+
+      {compareVisible && game ? (
+        <SessionCompareModal game={game} onClose={() => setCompareVisible(false)} />
+      ) : null}
+
+      {noteVisible && session ? (
+        <SessionNoteEditor
+          session={session}
+          onClose={() => setNoteVisible(false)}
+          onSaved={() => {
+            void reload();
           }}
         />
       ) : null}

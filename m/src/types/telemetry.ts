@@ -6,6 +6,19 @@ export type FpsSample = {
   fps: number;
 };
 
+/**
+ * Key graphics settings read from the game configuration (PC agent v1.2.0).
+ * Present when the agent found them in the game's ini/cfg/json files.
+ */
+export type GameSettings = {
+  quality?: string | null;
+  dlss?: boolean | null;
+  fsr?: boolean | null;
+  ray_tracing?: boolean | null;
+  vsync?: boolean | null;
+  fps_limit?: number | null;
+} & Record<string, unknown>;
+
 export type GameSession = {
   id: string;
   gameId: string;
@@ -19,6 +32,26 @@ export type GameSession = {
   avgFps: number;
   minFps: number;
   maxFps: number;
+  /** Game window resolution, e.g. `2560x1440` (`null` when unknown). */
+  resolution?: string | null;
+  /** `Fullscreen` / `Borderless` / `Windowed` (`null` when unknown). */
+  displayMode?: string | null;
+  /** `DX12` / `DX11` / `Vulkan` / `OpenGL` (`null` when unknown). */
+  graphicsApi?: string | null;
+  /** Key graphics settings from the game config (`null` when unknown). */
+  gameSettings?: GameSettings | null;
+  /** Free-form note typed by the user (`null` when empty). */
+  note?: string | null;
+  /** Average GPU temperature in °C during the session (`null` when unknown). */
+  gpuTempAvg?: number | null;
+  /** Maximum GPU temperature in °C during the session (`null` when unknown). */
+  gpuTempMax?: number | null;
+  /** Average GPU load in % during the session (`null` when unknown). */
+  gpuLoadAvg?: number | null;
+  /** Average CPU temperature in °C during the session (`null` when unknown). */
+  cpuTempAvg?: number | null;
+  /** Average CPU load in % during the session (`null` when unknown). */
+  cpuLoadAvg?: number | null;
 };
 
 export type Game = {
@@ -43,6 +76,16 @@ export type SessionRow = {
   min_fps: number | string | null;
   max_fps: number | string | null;
   duration_seconds: number | string | null;
+  resolution?: string | null;
+  display_mode?: string | null;
+  graphics_api?: string | null;
+  game_settings?: Record<string, unknown> | null;
+  note?: string | null;
+  gpu_temp_avg?: number | string | null;
+  gpu_temp_max?: number | string | null;
+  gpu_load_avg?: number | string | null;
+  cpu_temp_avg?: number | string | null;
+  cpu_load_avg?: number | string | null;
 };
 
 export type GameRow = {
@@ -120,6 +163,12 @@ export function shortNameFor(name: string): string {
   return letters.slice(0, 2).toUpperCase() || 'PC';
 }
 
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = toNumber(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function mapSession(row: SessionRow, gameId: string): GameSession {
   const parts = localPlayParts(row.played_at);
 
@@ -133,6 +182,16 @@ export function mapSession(row: SessionRow, gameId: string): GameSession {
     avgFps: toNumber(row.avg_fps),
     minFps: toNumber(row.min_fps),
     maxFps: toNumber(row.max_fps),
+    resolution: row.resolution ?? null,
+    displayMode: row.display_mode ?? null,
+    graphicsApi: row.graphics_api ?? null,
+    gameSettings: row.game_settings ? (row.game_settings as GameSettings) : null,
+    note: row.note ?? null,
+    gpuTempAvg: toNullableNumber(row.gpu_temp_avg),
+    gpuTempMax: toNullableNumber(row.gpu_temp_max),
+    gpuLoadAvg: toNullableNumber(row.gpu_load_avg),
+    cpuTempAvg: toNullableNumber(row.cpu_temp_avg),
+    cpuLoadAvg: toNullableNumber(row.cpu_load_avg),
   };
 }
 

@@ -12,7 +12,7 @@ import {
 
 /** Columns needed by the list and the detail screen (samples are loaded lazily). */
 const GAME_SELECT =
-  'id, name, process_name, created_at, sessions(id, played_at, avg_fps, min_fps, max_fps, duration_seconds)';
+  'id, name, process_name, created_at, sessions(id, played_at, avg_fps, min_fps, max_fps, duration_seconds, resolution, display_mode, graphics_api, game_settings, note, gpu_temp_avg, gpu_temp_max, gpu_load_avg, cpu_temp_avg, cpu_load_avg)';
 
 /** PresentMon sessions can have thousands of samples; the chart never needs more. */
 const MAX_CHART_POINTS = 240;
@@ -113,6 +113,16 @@ export async function renameGame(gameId: string, name: string): Promise<void> {
     .from('games')
     .update({ name: name.trim() })
     .eq('id', gameId);
+
+  if (error) throw error;
+}
+
+/** Saves a user-written note on a session (null clears it). */
+export async function updateSessionNote(sessionId: string, note: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('sessions')
+    .update({ note: note && note.length > 0 ? note : null })
+    .eq('id', sessionId);
 
   if (error) throw error;
 }

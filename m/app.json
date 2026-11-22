@@ -2,7 +2,7 @@
   "expo": {
     "name": "FramePulse",
     "slug": "framepulse",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "scheme": "framepulse",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "com.framepulse.app",
+      "versionCode": "3",
       "adaptiveIcon": {
         "backgroundColor": "#09090B",
         "foregroundImage": "./assets/android-icon-foreground.png",
