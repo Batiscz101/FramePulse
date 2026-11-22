@@ -26,7 +26,7 @@ LOG = logging.getLogger(__name__)
 PACKAGE_DIR = Path(__file__).resolve().parent
 BASE_DIR = PACKAGE_DIR.parent
 
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "1.2.0"
 
 CONFIG_FILE = BASE_DIR / "config.json"
 
@@ -168,7 +168,7 @@ def _download_presentmon(target: Path) -> None:
     api_request = urllib.request.Request(
         "https://api.github.com/repos/GameTechDev/PresentMon/releases/latest",
         headers={
-            "User-Agent": "FramePulseAgent/1.0",
+            "User-Agent": "FramePulseAgent/1.2.0",
             "Accept": "application/vnd.github+json",
         },
     )
@@ -189,7 +189,7 @@ def _download_presentmon(target: Path) -> None:
         raise RuntimeError("No x64 console application in the latest PresentMon release.")
 
     tmp = target.with_suffix(".exe.tmp")
-    request = urllib.request.Request(url, headers={"User-Agent": "FramePulseAgent/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "FramePulseAgent/1.2.0"})
     with urllib.request.urlopen(request, timeout=120) as response, tmp.open("wb") as handle:
         shutil.copyfileobj(response, handle, length=64 * 1024)
     with tmp.open("rb") as handle:
