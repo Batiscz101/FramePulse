@@ -55,6 +55,39 @@ class BuildRecordTests(unittest.TestCase):
         )
         self.assertTrue(record.played_at.endswith("+00:00"))
 
+    def test_build_record_carries_game_facts_and_telemetry(self) -> None:
+        record = build_record(
+            process_name="game.exe",
+            name="Game",
+            started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            metrics=metrics(),
+            samples=[(0.0, 60.0)],
+            resolution="2560x1440",
+            display_mode="Fullscreen",
+            graphics_api="DX11",
+            game_settings={"vsync": True, "fps_limit": 144},
+            gpu_temp_avg=55.0,
+            gpu_temp_max=61.0,
+            gpu_load_avg=12.5,
+            cpu_temp_avg=60.0,
+            cpu_load_avg=30.0,
+        )
+
+        self.assertEqual(record.resolution, "2560x1440")
+        self.assertEqual(record.display_mode, "Fullscreen")
+        self.assertEqual(record.graphics_api, "DX11")
+        self.assertEqual(record.game_settings, {"vsync": True, "fps_limit": 144})
+        self.assertEqual(record.gpu_temp_avg, 55.0)
+        self.assertEqual(record.gpu_temp_max, 61.0)
+        self.assertEqual(record.gpu_load_avg, 12.5)
+        self.assertEqual(record.cpu_temp_avg, 60.0)
+        self.assertEqual(record.cpu_load_avg, 30.0)
+
+        restored = SessionRecord.from_dict(json.loads(record.to_json()))
+        self.assertEqual(restored.resolution, "2560x1440")
+        self.assertEqual(restored.game_settings, {"vsync": True, "fps_limit": 144})
+        self.assertEqual(restored.gpu_temp_max, 61.0)
+
 
 class SessionRecordTests(unittest.TestCase):
     def test_roundtrip(self) -> None:

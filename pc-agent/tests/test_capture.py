@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from framepulse_agent.capture import (
     CsvFrameParser,
+    PresentMonCapture,
     build_presentmon_args,
     classify_failure,
     failure_from_exception,
+    map_runtime_to_api,
 )
 
 HEADER_V2 = (
@@ -126,6 +129,51 @@ class PresentMonArgsTests(unittest.TestCase):
         self.assertIn("--output_stdout", args)
         self.assertIn("--terminate_on_proc_exit", args)
         self.assertIn("--no_console_stats", args)
+
+
+class GraphicsApiTests(unittest.TestCase):
+    HEADER = "Application,ProcessID,Runtime,FrameTime\n"
+
+    def _feed_api_row(self, parser: CsvFrameParser, runtime: str) -> None:
+        parser.feed(self.HEADER)
+        parser.feed(f"game.exe,1234,{runtime},16.667")
+
+    def test_runtime_column_maps_to_api(self) -> None:
+        parser = CsvFrameParser(process_id=1234)
+        self._feed_api_row(parser, "DXGI")
+        self.assertEqual(parser.graphics_api, "DX11")
+
+    def test_d3d9_maps_to_dx9(self) -> None:
+        parser = CsvFrameParser(process_id=1234)
+        self._feed_api_row(parser, "D3D9")
+        self.assertEqual(parser.graphics_api, "DX9")
+
+    def test_vulkan_and_opengl(self) -> None:
+        for runtime, expected in (("Vulkan", "Vulkan"), ("OpenGL", "OpenGL"), ("DX12", "DX12")):
+            parser = CsvFrameParser(process_id=1234)
+            self._feed_api_row(parser, runtime)
+            self.assertEqual(parser.graphics_api, expected)
+
+    def test_no_api_column_means_none(self) -> None:
+        parser = CsvFrameParser(process_id=1234)
+        parser.feed("Application,ProcessID,FrameTime\n")
+        parser.feed("game.exe,1234,16.667")
+        self.assertIsNone(parser.graphics_api)
+
+    def test_capture_graphics_api_is_none_before_start(self) -> None:
+        capture = PresentMonCapture(Path("PresentMon.exe"), 1234, on_frame=lambda frame_ms: None)
+        self.assertIsNone(capture.graphics_api)
+
+
+class MapRuntimeToApiTests(unittest.TestCase):
+    def test_mapping(self) -> None:
+        self.assertEqual(map_runtime_to_api("DXGI"), "DX11")
+        self.assertEqual(map_runtime_to_api("D3D9"), "DX9")
+        self.assertEqual(map_runtime_to_api("Vulkan"), "Vulkan")
+        self.assertEqual(map_runtime_to_api("OpenGL"), "OpenGL")
+        self.assertEqual(map_runtime_to_api("DX12"), "DX12")
+        self.assertIsNone(map_runtime_to_api(""))
+        self.assertIsNone(map_runtime_to_api("unknown"))
 
 
 if __name__ == "__main__":

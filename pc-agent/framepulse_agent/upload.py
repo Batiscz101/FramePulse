@@ -28,6 +28,17 @@ class SessionRecord:
     duration_seconds: int
     samples: list[dict[str, float]] = field(default_factory=list)
     session_id: str | None = None
+    # Game facts captured during the session (v1.2.0).
+    resolution: str | None = None
+    display_mode: str | None = None
+    graphics_api: str | None = None
+    game_settings: dict[str, Any] | None = None
+    # Telemetry averages over the session (v1.2.0).
+    gpu_temp_avg: float | None = None
+    gpu_temp_max: float | None = None
+    gpu_load_avg: float | None = None
+    cpu_temp_avg: float | None = None
+    cpu_load_avg: float | None = None
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__, ensure_ascii=False)
@@ -44,6 +55,15 @@ class SessionRecord:
             duration_seconds=int(data.get("duration_seconds", 0)),
             samples=[dict(item) for item in data.get("samples", [])],
             session_id=data.get("session_id"),
+            resolution=data.get("resolution"),
+            display_mode=data.get("display_mode"),
+            graphics_api=data.get("graphics_api"),
+            game_settings=data.get("game_settings"),
+            gpu_temp_avg=data.get("gpu_temp_avg"),
+            gpu_temp_max=data.get("gpu_temp_max"),
+            gpu_load_avg=data.get("gpu_load_avg"),
+            cpu_temp_avg=data.get("cpu_temp_avg"),
+            cpu_load_avg=data.get("cpu_load_avg"),
         )
 
 
@@ -54,6 +74,15 @@ def build_record(
     started_at: datetime,
     metrics: FpsMetrics,
     samples: Iterable[tuple[float, float]],
+    resolution: str | None = None,
+    display_mode: str | None = None,
+    graphics_api: str | None = None,
+    game_settings: dict[str, Any] | None = None,
+    gpu_temp_avg: float | None = None,
+    gpu_temp_max: float | None = None,
+    gpu_load_avg: float | None = None,
+    cpu_temp_avg: float | None = None,
+    cpu_load_avg: float | None = None,
 ) -> SessionRecord:
     """Converts measured data to a row for `sessions` + bodies for `fps_samples`."""
     played_at = started_at.astimezone(timezone.utc).isoformat(timespec="seconds")
@@ -71,6 +100,15 @@ def build_record(
             {"timestamp_offset": round(float(offset), 2), "fps": round(float(fps), 2)}
             for offset, fps in samples
         ],
+        resolution=resolution,
+        display_mode=display_mode,
+        graphics_api=graphics_api,
+        game_settings=game_settings,
+        gpu_temp_avg=gpu_temp_avg,
+        gpu_temp_max=gpu_temp_max,
+        gpu_load_avg=gpu_load_avg,
+        cpu_temp_avg=cpu_temp_avg,
+        cpu_load_avg=cpu_load_avg,
     )
 
 
@@ -210,6 +248,15 @@ class Uploader:
             min_fps=round(record.min_fps, 2),
             max_fps=round(record.max_fps, 2),
             duration_seconds=int(record.duration_seconds),
+            resolution=record.resolution,
+            display_mode=record.display_mode,
+            graphics_api=record.graphics_api,
+            game_settings=record.game_settings,
+            gpu_temp_avg=record.gpu_temp_avg,
+            gpu_temp_max=record.gpu_temp_max,
+            gpu_load_avg=record.gpu_load_avg,
+            cpu_temp_avg=record.cpu_temp_avg,
+            cpu_load_avg=record.cpu_load_avg,
         )
 
         # Idempotent sample write: old rows are deleted before insertion.

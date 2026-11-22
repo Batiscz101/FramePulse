@@ -13,7 +13,7 @@ import ctypes
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ctypes import wintypes
 
 import psutil
@@ -22,9 +22,15 @@ LOG = logging.getLogger(__name__)
 
 # Window style: tool windows are palettes/overlays, never games.
 WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_TOPMOST = 0x00000008
+WS_CAPTION = 0x00C00000
+GWL_STYLE = -16
 GWL_EXSTYLE = -20
 
 MONITOR_DEFAULTTONEAREST = 2
+
+# A window whose size covers the monitor within this fraction counts as fullscreen.
+FULLSCREEN_COVER_RATIO = 0.95
 
 MIN_WINDOW_AREA_RATIO = 0.45
 
@@ -235,6 +241,14 @@ class WindowInfo:
     area_ratio: float
     is_foreground: bool
     is_minimized: bool
+    #: Window rectangle (left, top, right, bottom).
+    rect: wintypes.RECT = field(default_factory=wintypes.RECT)
+    #: Rectangle of the monitor the window belongs to (None when unavailable).
+    monitor_rect: tuple[int, int, int, int] | None = None
+    #: Window styles (GWL_STYLE) of the window.
+    style: int = 0
+    #: True when the window has the WS_EX_TOPMOST style.
+    is_topmost: bool = False
 
 
 @dataclass(frozen=True)
@@ -265,27 +279,41 @@ def _process_snapshot() -> dict[int, tuple[str, str]]:
     return result
 
 
-def _window_area_ratio(hwnd: int) -> float:
+def _window_geometry(hwnd: int) -> tuple[wintypes.RECT, tuple[int, int, int, int] | None, int, int]:
+    """Returns (rect, monitor_rect, style, ex_style); monitor_rect is None on failure."""
     rect = wintypes.RECT()
     if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-        return 0.0
+        return rect, None, 0, 0
 
-    width = max(0, rect.right - rect.left)
-    height = max(0, rect.bottom - rect.top)
-    if width <= 0 or height <= 0:
-        return 0.0
+    style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+    ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
 
     monitor = user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
     if not monitor:
-        return 0.0
+        return rect, None, style, ex_style
 
     info = MONITORINFO()
     info.cbSize = ctypes.sizeof(MONITORINFO)
     if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        return rect, None, style, ex_style
+
+    monitor_rect = (
+        info.rcMonitor.left,
+        info.rcMonitor.top,
+        info.rcMonitor.right,
+        info.rcMonitor.bottom,
+    )
+    return rect, monitor_rect, style, ex_style
+
+
+def _window_area_ratio(rect: wintypes.RECT, monitor_rect: tuple[int, int, int, int] | None) -> float:
+    width = max(0, rect.right - rect.left)
+    height = max(0, rect.bottom - rect.top)
+    if width <= 0 or height <= 0 or monitor_rect is None:
         return 0.0
 
-    screen_width = max(0, info.rcMonitor.right - info.rcMonitor.left)
-    screen_height = max(0, info.rcMonitor.bottom - info.rcMonitor.top)
+    screen_width = max(0, monitor_rect[2] - monitor_rect[0])
+    screen_height = max(0, monitor_rect[3] - monitor_rect[1])
     screen_area = screen_width * screen_height
     if screen_area <= 0:
         return 0.0
@@ -328,6 +356,8 @@ def enumerate_windows() -> list[WindowInfo]:
             if not exe:
                 return True
 
+            rect, monitor_rect, style, ex_style = _window_geometry(hwnd)
+
             windows.append(
                 WindowInfo(
                     pid=pid_value,
@@ -335,9 +365,13 @@ def enumerate_windows() -> list[WindowInfo]:
                     exe_path=exe_path,
                     title=title,
                     class_name=class_name,
-                    area_ratio=_window_area_ratio(hwnd),
+                    area_ratio=_window_area_ratio(rect, monitor_rect),
                     is_foreground=hwnd == foreground,
                     is_minimized=bool(user32.IsIconic(hwnd)),
+                    rect=rect,
+                    monitor_rect=monitor_rect,
+                    style=style,
+                    is_topmost=bool(ex_style & WS_EX_TOPMOST),
                 )
             )
         except Exception:  # the window disappeared meanwhile – no problem
@@ -469,3 +503,57 @@ def process_alive(pid: int, create_time: float | None = None) -> bool:
         return process.status() != psutil.STATUS_ZOMBIE
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
         return True
+
+
+# -- window facts for games --------------------------------------------------
+
+
+def find_window_by_pid(pid: int) -> WindowInfo | None:
+    """Returns the visible window owned by the process (None if not found)."""
+    for window in enumerate_windows():
+        if window.pid == pid:
+            return window
+    return None
+
+
+def display_mode_for_window(info: WindowInfo) -> str:
+    """Classifies the window as Fullscreen / Borderless / Windowed.
+
+    By window style and size relative to the monitor: a window covering the
+    monitor is exclusive (Fullscreen) unless it is topmost (Borderless);
+    smaller windows are Windowed.
+    """
+    rect = info.rect
+    width = max(0, rect.right - rect.left)
+    height = max(0, rect.bottom - rect.top)
+    if width <= 0 or height <= 0 or info.monitor_rect is None:
+        return "Windowed"
+
+    monitor_rect = info.monitor_rect
+    monitor_width = max(0, monitor_rect[2] - monitor_rect[0])
+    monitor_height = max(0, monitor_rect[3] - monitor_rect[1])
+    if monitor_width <= 0 or monitor_height <= 0:
+        return "Windowed"
+
+    covers_monitor = (
+        width >= round(monitor_width * FULLSCREEN_COVER_RATIO)
+        and height >= round(monitor_height * FULLSCREEN_COVER_RATIO)
+    )
+    if not covers_monitor:
+        return "Windowed"
+    return "Borderless" if info.is_topmost else "Fullscreen"
+
+
+def game_window_facts(pid: int) -> tuple[str | None, str | None]:
+    """Returns (resolution, display mode) of the game window.
+
+    Resolution is e.g. "2560x1440" from the window size; display mode is
+    Fullscreen / Borderless / Windowed. Both are None when no window is found.
+    """
+    info = find_window_by_pid(pid)
+    if info is None:
+        return None, None
+    width = max(0, info.rect.right - info.rect.left)
+    height = max(0, info.rect.bottom - info.rect.top)
+    resolution = f"{width}x{height}" if width > 0 and height > 0 else None
+    return resolution, display_mode_for_window(info)

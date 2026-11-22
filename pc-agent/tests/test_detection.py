@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import os
 import unittest
+from ctypes import wintypes
+from unittest import mock
 
 from framepulse_agent.detection import (
     WindowInfo,
     choose_candidate,
+    display_mode_for_window,
+    game_window_facts,
     is_probable_game,
     process_alive,
 )
@@ -144,6 +148,58 @@ class ProcessAliveTests(unittest.TestCase):
 
     def test_missing_process(self) -> None:
         self.assertFalse(process_alive(999_999))
+
+
+def game_window(
+    *,
+    pid: int = 500,
+    width: int = 2560,
+    height: int = 1440,
+    monitor: tuple[int, int, int, int] = (0, 0, 2560, 1440),
+    topmost: bool = False,
+) -> WindowInfo:
+    rect = wintypes.RECT()
+    rect.left, rect.top, rect.right, rect.bottom = 0, 0, width, height
+    return WindowInfo(
+        pid=pid,
+        exe="game.exe",
+        exe_path=r"D:\Games\MyGame\game.exe",
+        title="My Game",
+        class_name="UnrealWindow",
+        area_ratio=1.0,
+        is_foreground=True,
+        is_minimized=False,
+        rect=rect,
+        monitor_rect=monitor,
+        is_topmost=topmost,
+        style=0x00C00000,
+    )
+
+
+class DisplayModeTests(unittest.TestCase):
+    def test_fullscreen(self) -> None:
+        self.assertEqual(display_mode_for_window(game_window(topmost=False)), "Fullscreen")
+
+    def test_borderless(self) -> None:
+        self.assertEqual(display_mode_for_window(game_window(topmost=True)), "Borderless")
+
+    def test_windowed(self) -> None:
+        self.assertEqual(display_mode_for_window(game_window(width=1280, height=720)), "Windowed")
+
+    def test_approximate_monitor_covers_is_fullscreen(self) -> None:
+        window = game_window(width=2550, height=1438, topmost=False)
+        self.assertEqual(display_mode_for_window(window), "Fullscreen")
+
+
+class GameWindowFactsTests(unittest.TestCase):
+    def test_returns_resolution_and_display_mode(self) -> None:
+        info = game_window(pid=77, width=2560, height=1440, topmost=False)
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[info]):
+            self.assertEqual(game_window_facts(77), ("2560x1440", "Fullscreen"))
+
+    def test_none_when_no_window(self) -> None:
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[]):
+            self.assertEqual(game_window_facts(999), (None, None))
 
 
 if __name__ == "__main__":

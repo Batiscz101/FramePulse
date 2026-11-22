@@ -74,6 +74,10 @@ FRAME_TIME_COLUMNS = (
 PID_COLUMN = "processid"
 APPLICATION_COLUMN = "application"
 
+# PresentMon CSV columns that may carry the graphics API of the game.
+# PresentMon 2.6.0 reports the `Runtime` column (DXGI / D3D9).
+GRAPHICS_API_COLUMNS = ("runtime", "presentruntime", "api", "graphicsapi", "renderapi")
+
 _NORMALIZE = re.compile(r"[^a-z0-9]")
 
 MAX_REASONABLE_FRAME_MS = 10_000.0
@@ -95,6 +99,29 @@ def _exe_basename(value: str) -> str:
     return name[:-4] if name.endswith(".exe") else name
 
 
+def map_runtime_to_api(value: str | None) -> str | None:
+    """Maps a PresentMon `Runtime` value to a canonical graphics API name.
+
+    PresentMon 2.6.0 reports DXGI for DX10/11/12 presents (they share the
+    DXGI runtime) and D3D9 for DX9; DXGI is mapped to DX11 unless a newer
+    PresentMon reports DX12/D3D12 explicitly.
+    """
+    text = " ".join(str(value or "").upper().split())
+    if not text:
+        return None
+    if "DX12" in text or "D3D12" in text:
+        return "DX12"
+    if "DX11" in text or "D3D11" in text or "DXGI" in text or "D3D10" in text or "DX10" in text:
+        return "DX11"
+    if "DX9" in text or "D3D9" in text:
+        return "DX9"
+    if "VULKAN" in text:
+        return "Vulkan"
+    if "OPENGL" in text:
+        return "OpenGL"
+    return None
+
+
 class CsvFrameParser:
     """Converts PresentMon CSV rows to frame times in ms."""
 
@@ -111,7 +138,10 @@ class CsvFrameParser:
         self._frame_index: int | None = None
         self._pid_index: int | None = None
         self._app_index: int | None = None
+        self._api_index: int | None = None
         self._header: list[str] | None = None
+        #: Last graphics API value reported by PresentMon (None when unknown).
+        self.graphics_api: str | None = None
 
         self.rows_seen = 0
         self.frames_seen = 0
@@ -144,6 +174,11 @@ class CsvFrameParser:
                 if index is not None:
                     self._frame_index = index
                     break
+            for column in GRAPHICS_API_COLUMNS:
+                index = self._index(normalized, column)
+                if index is not None:
+                    self._api_index = index
+                    break
 
             LOG.debug("PresentMon CSV header: %s", ",".join(cells))
             if self._frame_index is None:
@@ -155,6 +190,12 @@ class CsvFrameParser:
 
         self.rows_seen += 1
         cells = self._split(text)
+
+        if self._api_index is not None:
+            mapped = map_runtime_to_api(cells[self._api_index] if self._api_index < len(cells) else "")
+            if mapped is not None:
+                self.graphics_api = mapped
+
         if len(cells) <= self._frame_index:
             return None
 
@@ -380,6 +421,12 @@ class PresentMonCapture:
     def has_header(self) -> bool:
         parser = self._parser
         return parser is not None and parser.header is not None
+
+    @property
+    def graphics_api(self) -> str | None:
+        """The graphics API reported by PresentMon (None until known)."""
+        parser = self._parser
+        return parser.graphics_api if parser is not None else None
 
     # -- reading pipes -------------------------------------------------------
 

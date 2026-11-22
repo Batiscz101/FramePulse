@@ -12,10 +12,11 @@ import logging
 import os
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable
 
+from framepulse_agent import sensors
 from framepulse_agent.capture import (
     CaptureFailure,
     PresentMonCapture,
@@ -27,12 +28,15 @@ from framepulse_agent.detection import (
     GameCandidate,
     choose_candidate,
     enumerate_windows,
+    game_window_facts,
     process_alive,
     process_create_time,
 )
 from framepulse_agent.metrics import FrameAggregator
 from framepulse_agent.naming import derive_game_name
-from framepulse_agent.supabase import SupabaseError
+from framepulse_agent.sensors import TelemetryCollector
+from framepulse_agent.settings_reader import read_game_settings
+from framepulse_agent.supabase import LIVE_STATUS_ID, SupabaseError
 from framepulse_agent.upload import SessionRecord, Uploader, build_record
 
 LOG = logging.getLogger(__name__)
@@ -49,7 +53,14 @@ KNOWN_REFRESH_SECONDS = 600.0
 # How often to recalculate the file count in the outbox.
 PENDING_REFRESH_SECONDS = 5.0
 
+# How often the "právě hraji" live status is refreshed during a session.
+LIVE_UPDATE_INTERVAL_SECONDS = 8.0
+
 Notifier = Callable[[str, str], None]
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 @dataclass(frozen=True)
@@ -99,6 +110,14 @@ class _Active:
     confirmed: bool = False
     last_frame_at: float | None = None
     last_frame_count: int = 0
+    # Game facts (v1.2.0): window size, display mode, graphics API,
+    # key graphics settings and telemetry samples.
+    resolution: str | None = None
+    display_mode: str | None = None
+    graphics_api: str | None = None
+    game_settings: dict[str, Any] | None = None
+    telemetry: TelemetryCollector = field(default_factory=TelemetryCollector)
+    live_update_at: float = 0.0
 
 
 class GameAgent:
@@ -197,6 +216,8 @@ class GameAgent:
 
     def _run(self) -> None:
         LOG.info("Watching games started (interval %.1f s).", self._config.poll_interval)
+        # No game is playing – clear any stale "právě hraji" state from before.
+        self._live_status_idle()
         # We load the game list and the queue in the background so the first detection doesn't wait on the network.
         self._refresh_known(force=True)
 
@@ -275,6 +296,9 @@ class GameAgent:
             sample_seconds=self._config.sample_interval,
             warmup_seconds=self._config.warmup_seconds,
         )
+        # Universal per-game facts: window size and display mode, plus the
+        # game's key graphics settings read from its config files.
+        resolution, display_mode = game_window_facts(candidate.pid)
         active = _Active(
             pid=candidate.pid,
             process_name=candidate.process_name,
@@ -284,6 +308,9 @@ class GameAgent:
             started_at=datetime.now(timezone.utc),
             aggregator=aggregator,
             start_monotonic=time.monotonic(),
+            resolution=resolution,
+            display_mode=display_mode,
+            game_settings=read_game_settings(),
         )
 
         capture = PresentMonCapture(
@@ -308,6 +335,9 @@ class GameAgent:
         with self._lock:
             self._active = active
             self._state = STATE_STARTING
+
+        # Announce the live session ("právě hraji").
+        self._live_status(active, is_playing=True)
 
     # -- measurement progress -------------------------------------------------------
 
@@ -347,6 +377,15 @@ class GameAgent:
             self._finish_active("PresentMon exited")
             return
 
+        # The graphics API comes directly from the PresentMon output.
+        if capture.graphics_api:
+            active.graphics_api = capture.graphics_api
+
+        # ~8 s refresh of the live status while playing.
+        if now - active.live_update_at >= LIVE_UPDATE_INTERVAL_SECONDS:
+            active.live_update_at = now
+            self._live_update(active)
+
         elapsed = now - active.start_monotonic
 
         if not active.confirmed and elapsed > self._config.confirm_frames_seconds:
@@ -372,6 +411,7 @@ class GameAgent:
         with self._lock:
             self._active = None
             self._state = STATE_ERROR
+        self._live_status_idle()
         self._last_error = failure.message
         self._notify("Measurement failed", failure.message)
 
@@ -395,8 +435,13 @@ class GameAgent:
         if active.capture is not None:
             active.capture.stop()
 
+        # The game ended (or the agent is exiting): "právě hraji" is over and
+        # the current live data is zeroed.
+        self._live_status(active, is_playing=False)
+
         active.aggregator.finish()
         metrics = active.aggregator.metrics()
+        telemetry = active.telemetry.summary()
 
         if (
             not metrics.is_usable
@@ -419,6 +464,15 @@ class GameAgent:
             started_at=active.started_at,
             metrics=metrics,
             samples=active.aggregator.samples(),
+            resolution=active.resolution,
+            display_mode=active.display_mode,
+            graphics_api=active.graphics_api,
+            game_settings=active.game_settings,
+            gpu_temp_avg=telemetry.get("gpu_temp_avg"),
+            gpu_temp_max=telemetry.get("gpu_temp_max"),
+            gpu_load_avg=telemetry.get("gpu_load_avg"),
+            cpu_temp_avg=telemetry.get("cpu_temp_avg"),
+            cpu_load_avg=telemetry.get("cpu_load_avg"),
         )
         self._known = self._known | {active.process_name}
 
@@ -446,6 +500,75 @@ class GameAgent:
             reason,
         )
         self._publish()
+
+    # -- live status ("právě hraji") -----------------------------------------
+
+    def _live_status_idle(self) -> None:
+        """Marks the live status row as not playing (agent startup/exit)."""
+        row = {
+            "id": LIVE_STATUS_ID,
+            "is_playing": False,
+            "current_fps": None,
+            "gpu_temp": None,
+            "cpu_temp": None,
+            "resolution": None,
+            "graphics_api": None,
+            "updated_at": _utc_now_iso(),
+        }
+        try:
+            self._uploader.client.upsert_live_status(row)
+        except SupabaseError as exc:
+            LOG.debug("Live status update failed: %s", exc)
+
+    def _live_status(
+        self,
+        active: _Active,
+        *,
+        is_playing: bool,
+        current_fps: float | None = None,
+        gpu_temp: float | None = None,
+        cpu_temp: float | None = None,
+    ) -> None:
+        """Writes the singleton `live_status` row (id = 'default')."""
+        row: dict[str, Any] = {
+            "id": LIVE_STATUS_ID,
+            "is_playing": is_playing,
+            "game_name": derive_game_name(active.process_name, active.title),
+            "process_name": active.process_name,
+            "started_at": active.started_at.astimezone(timezone.utc).isoformat(timespec="seconds"),
+            # The current data is zeroed once the session is over.
+            "current_fps": current_fps if is_playing else None,
+            "gpu_temp": gpu_temp if is_playing else None,
+            "cpu_temp": cpu_temp if is_playing else None,
+            "resolution": active.resolution if is_playing else None,
+            "graphics_api": active.graphics_api if is_playing else None,
+            "updated_at": _utc_now_iso(),
+        }
+        try:
+            self._uploader.client.upsert_live_status(row)
+        except SupabaseError as exc:
+            LOG.debug("Live status update failed: %s", exc)
+
+    def _live_update(self, active: _Active) -> None:
+        """Refreshes the live status during a session (~every 8 s)."""
+        try:
+            gpu = sensors.read_gpu_stats()
+        except Exception:
+            LOG.debug("GPU reading failed", exc_info=True)
+            gpu = None
+        try:
+            cpu = sensors.read_cpu_stats()
+        except Exception:
+            LOG.debug("CPU reading failed", exc_info=True)
+            cpu = None
+        active.telemetry.record(gpu, cpu)
+        self._live_status(
+            active,
+            is_playing=True,
+            current_fps=active.aggregator.live_fps(),
+            gpu_temp=gpu.temp_c if gpu is not None else None,
+            cpu_temp=cpu.temp_c if cpu is not None else None,
+        )
 
     # -- helpers -------------------------------------------------------------
 
