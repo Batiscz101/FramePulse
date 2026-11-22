@@ -32,12 +32,31 @@ create table if not exists public.sessions (
   avg_fps numeric(7, 2) not null default 0 check (avg_fps >= 0),
   min_fps numeric(7, 2) not null default 0 check (min_fps >= 0),
   max_fps numeric(7, 2) not null default 0 check (max_fps >= 0),
-  duration_seconds integer not null default 0 check (duration_seconds >= 0)
+  duration_seconds integer not null default 0 check (duration_seconds >= 0),
+  -- v1.2.0: game facts and telemetry captured during the session.
+  resolution text,
+  display_mode text,
+  graphics_api text,
+  game_settings jsonb,
+  gpu_temp_avg numeric(5, 2),
+  gpu_temp_max numeric(5, 2),
+  gpu_load_avg numeric(5, 2),
+  cpu_temp_avg numeric(5, 2),
+  cpu_load_avg numeric(5, 2)
 );
 
 comment on table public.sessions is 'Individual playthroughs with aggregated FPS values.';
 comment on column public.sessions.played_at is 'Start of the session (UTC).';
 comment on column public.sessions.duration_seconds is 'Duration of the session in seconds.';
+comment on column public.sessions.resolution is 'Game window resolution, e.g. 2560x1440.';
+comment on column public.sessions.display_mode is 'Window mode: Fullscreen, Borderless or Windowed.';
+comment on column public.sessions.graphics_api is 'Graphics API: DX12, DX11, Vulkan or OpenGL.';
+comment on column public.sessions.game_settings is 'Key graphics settings read from the game config: quality, dlss, fsr, ray_tracing, vsync, fps_limit (JSON object).';
+comment on column public.sessions.gpu_temp_avg is 'Average GPU temperature in °C during the session.';
+comment on column public.sessions.gpu_temp_max is 'Maximum GPU temperature in °C during the session.';
+comment on column public.sessions.gpu_load_avg is 'Average GPU load in % during the session.';
+comment on column public.sessions.cpu_temp_avg is 'Average CPU temperature in °C during the session.';
+comment on column public.sessions.cpu_load_avg is 'Average CPU load in % during the session.';
 
 -- Time series of FPS within one session.
 create table if not exists public.fps_samples (
@@ -50,6 +69,34 @@ create table if not exists public.fps_samples (
 comment on table public.fps_samples is 'FPS samples during the session.';
 comment on column public.fps_samples.timestamp_offset is 'Seconds from the start of the session.';
 comment on column public.fps_samples.fps is 'Measured FPS at the given time.';
+
+-- Live status: the "právě hraji" row. The table has a single row (id = 'default').
+create table if not exists public.live_status (
+  id text primary key default 'default',
+  is_playing boolean not null default false,
+  game_name text,
+  process_name text,
+  started_at timestamptz,
+  current_fps numeric(7, 2),
+  resolution text,
+  graphics_api text,
+  gpu_temp numeric(5, 2),
+  cpu_temp numeric(5, 2),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.live_status is 'Live "právě hraji" status written by the agent (singleton row).';
+comment on column public.live_status.id is 'Fixed id of the singleton row (default).';
+comment on column public.live_status.is_playing is 'True while the agent measures a game.';
+comment on column public.live_status.game_name is 'Name of the measured game (e.g. from the window title).';
+comment on column public.live_status.process_name is 'Executable file name of the measured game, e.g. Cyberpunk2077.exe.';
+comment on column public.live_status.started_at is 'When the current session was detected (UTC).';
+comment on column public.live_status.current_fps is 'Live FPS of the current session, when measurable.';
+comment on column public.live_status.resolution is 'Window resolution of the current session, e.g. 2560x1440.';
+comment on column public.live_status.graphics_api is 'Graphics API of the current session: DX12, DX11, Vulkan or OpenGL.';
+comment on column public.live_status.gpu_temp is 'GPU temperature in °C, when the agent can read it.';
+comment on column public.live_status.cpu_temp is 'CPU temperature in °C, when the agent can read it.';
+comment on column public.live_status.updated_at is 'When the agent last wrote this row.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Indexy
@@ -163,6 +210,29 @@ create policy "fps_samples_delete" on public.fps_samples
   for delete to anon, authenticated
   using (true);
 
+-- live_status
+alter table public.live_status enable row level security;
+
+drop policy if exists "live_status_select" on public.live_status;
+create policy "live_status_select" on public.live_status
+  for select to anon, authenticated
+  using (true);
+
+drop policy if exists "live_status_insert" on public.live_status;
+create policy "live_status_insert" on public.live_status
+  for insert to anon, authenticated
+  with check (true);
+
+drop policy if exists "live_status_update" on public.live_status;
+create policy "live_status_update" on public.live_status
+  for update to anon, authenticated
+  using (true) with check (true);
+
+drop policy if exists "live_status_delete" on public.live_status;
+create policy "live_status_delete" on public.live_status
+  for delete to anon, authenticated
+  using (true);
+
 -- ---------------------------------------------------------------------------
 -- 4. Grants
 -- ---------------------------------------------------------------------------
@@ -174,6 +244,7 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.games to anon, authenticated;
 grant select, insert, update, delete on public.sessions to anon, authenticated;
 grant select, insert, update, delete on public.fps_samples to anon, authenticated;
+grant select, insert, update, delete on public.live_status to anon, authenticated;
 
 -- The Identity column fps_samples.id needs a sequence.
 grant usage, select on all sequences in schema public to anon, authenticated;
