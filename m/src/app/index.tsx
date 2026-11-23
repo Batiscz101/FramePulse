@@ -16,6 +16,7 @@ import { GameCard } from '@/components/game-card';
 import { GameFormModal, type GameFormValues } from '@/components/game-form-modal';
 import { LanguageToggle } from '@/components/language-toggle';
 import { LiveNowCard } from '@/components/live-now-card';
+import { LiveSessionModal } from '@/components/live-session-modal';
 import { OfflineBadge } from '@/components/offline-badge';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useGames } from '@/hooks/use-games';
@@ -39,6 +40,15 @@ export default function GamesScreen() {
   const [addVisible, setAddVisible] = useState(false);
   const [lastLive, setLastLive] = useState(live);
   const [liveSamples, setLiveSamples] = useState<FpsSample[]>([]);
+  const [liveModalVisible, setLiveModalVisible] = useState(false);
+
+  // The 6 s `useLiveStatus` poll returns a new `live` object each time;
+  // while the game keeps playing every poll reports `isPlaying: true`. The
+  // modal is closed only when the data says the game has stopped – a poll
+  // mid-session never closes or resets an open modal.
+  if (!live.isPlaying && liveModalVisible) {
+    setLiveModalVisible(false);
+  }
 
   // Append one sample per `useLiveStatus` poll: the hook returns a new `live`
   // object every poll, so adjusting the samples during render appends exactly
@@ -115,8 +125,7 @@ export default function GamesScreen() {
           <>
             <LiveNowCard
               status={live}
-              liveSamples={liveSamples}
-              historyGameId={historyGame?.id ?? null}
+              onOpenModal={() => setLiveModalVisible(true)}
             />
             <View className="pb-5 pt-6">
             <View className="flex-row items-start justify-between">
@@ -241,6 +250,15 @@ export default function GamesScreen() {
           )
         }
       />
+
+      {liveModalVisible ? (
+        <LiveSessionModal
+          status={live}
+          liveSamples={liveSamples}
+          historyGameId={historyGame?.id ?? null}
+          onClose={() => setLiveModalVisible(false)}
+        />
+      ) : null}
 
       {addVisible ? (
         <GameFormModal

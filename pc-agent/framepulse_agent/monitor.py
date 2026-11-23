@@ -432,74 +432,80 @@ class GameAgent:
         if active is None:
             return
 
-        if active.capture is not None:
-            active.capture.stop()
+        try:
+            if active.capture is not None:
+                active.capture.stop()
 
-        # The game ended (or the agent is exiting): "právě hraji" is over and
-        # the current live data is zeroed.
-        self._live_status(active, is_playing=False)
+            # The game ended (or the agent is exiting): "právě hraji" is over and
+            # the current live data is zeroed.
+            self._live_status(active, is_playing=False)
 
-        active.aggregator.finish()
-        metrics = active.aggregator.metrics()
-        telemetry = active.telemetry.summary()
+            active.aggregator.finish()
+            metrics = active.aggregator.metrics()
+            telemetry = active.telemetry.summary()
 
-        if (
-            not metrics.is_usable
-            or metrics.total_seconds < self._config.min_session_seconds
-        ):
+            if (
+                not metrics.is_usable
+                or metrics.total_seconds < self._config.min_session_seconds
+            ):
+                LOG.info(
+                    "Session discarded (%s): %.1f s total, %.1f s measured, %s frames.",
+                    reason,
+                    metrics.total_seconds,
+                    metrics.duration_seconds,
+                    metrics.frame_count,
+                )
+                self._publish()
+                return
+
+            name = derive_game_name(active.process_name, active.title)
+            record = build_record(
+                process_name=active.process_name,
+                name=name,
+                started_at=active.started_at,
+                metrics=metrics,
+                samples=active.aggregator.samples(),
+                resolution=active.resolution,
+                display_mode=active.display_mode,
+                graphics_api=active.graphics_api,
+                game_settings=active.game_settings,
+                gpu_temp_avg=telemetry.get("gpu_temp_avg"),
+                gpu_temp_max=telemetry.get("gpu_temp_max"),
+                gpu_load_avg=telemetry.get("gpu_load_avg"),
+                cpu_temp_avg=telemetry.get("cpu_temp_avg"),
+                cpu_load_avg=telemetry.get("cpu_load_avg"),
+            )
+            self._known = self._known | {active.process_name}
+
+            if try_upload:
+                threading.Thread(
+                    target=self._submit_record,
+                    args=(record,),
+                    name="session-upload",
+                    daemon=True,
+                ).start()
+            else:
+                try:
+                    self._uploader.save(record)
+                    LOG.info("Session %s saved to the queue on exit.", record.name)
+                except OSError:
+                    LOG.exception("Failed to save session %s to the queue.", record.name)
+
             LOG.info(
-                "Session discarded (%s): %.1f s total, %.1f s measured, %s frames.",
-                reason,
-                metrics.total_seconds,
+                "Session %s: %.1f s, average %.1f FPS, 1%% low %.1f FPS, %s samples (%s).",
+                name,
                 metrics.duration_seconds,
-                metrics.frame_count,
+                metrics.avg_fps,
+                metrics.min_fps,
+                metrics.sample_count,
+                reason,
             )
             self._publish()
-            return
-
-        name = derive_game_name(active.process_name, active.title)
-        record = build_record(
-            process_name=active.process_name,
-            name=name,
-            started_at=active.started_at,
-            metrics=metrics,
-            samples=active.aggregator.samples(),
-            resolution=active.resolution,
-            display_mode=active.display_mode,
-            graphics_api=active.graphics_api,
-            game_settings=active.game_settings,
-            gpu_temp_avg=telemetry.get("gpu_temp_avg"),
-            gpu_temp_max=telemetry.get("gpu_temp_max"),
-            gpu_load_avg=telemetry.get("gpu_load_avg"),
-            cpu_temp_avg=telemetry.get("cpu_temp_avg"),
-            cpu_load_avg=telemetry.get("cpu_load_avg"),
-        )
-        self._known = self._known | {active.process_name}
-
-        if try_upload:
-            threading.Thread(
-                target=self._submit_record,
-                args=(record,),
-                name="session-upload",
-                daemon=True,
-            ).start()
-        else:
-            try:
-                self._uploader.save(record)
-                LOG.info("Session %s saved to the queue on exit.", record.name)
-            except OSError:
-                LOG.exception("Failed to save session %s to the queue.", record.name)
-
-        LOG.info(
-            "Session %s: %.1f s, average %.1f FPS, 1%% low %.1f FPS, %s samples (%s).",
-            name,
-            metrics.duration_seconds,
-            metrics.avg_fps,
-            metrics.min_fps,
-            metrics.sample_count,
-            reason,
-        )
-        self._publish()
+        finally:
+            # The game is over (or the agent is exiting): the live status must
+            # never stay "právě hraji" – even when the session was too short,
+            # the save failed or an exception interrupted the flow.
+            self._live_status_idle()
 
     # -- live status ("právě hraji") -----------------------------------------
 

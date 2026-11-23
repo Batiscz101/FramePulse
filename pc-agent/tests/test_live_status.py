@@ -265,6 +265,51 @@ class AgentLiveStatusTests(unittest.TestCase):
 
         self.assertFalse(self.client.live_status[-1]["is_playing"])
 
+    def test_run_calls_live_status_idle_at_startup(self) -> None:
+        self.agent._stop_event.set()
+        with mock.patch.object(self.agent, "_live_status_idle") as idle:
+            self.agent._run()
+        idle.assert_called_once()
+
+    def test_finish_active_calls_idle_when_session_too_short(self) -> None:
+        active = make_active(self.agent)
+        self.agent._active = active
+        self.agent._state = STATE_CAPTURING
+
+        with mock.patch.object(self.agent, "_live_status_idle", wraps=self.agent._live_status_idle) as idle:
+            self.agent._finish_active("test", try_upload=False)
+
+        idle.assert_called_once()
+        self.assertFalse(self.client.live_status[-1]["is_playing"])
+
+    def test_finish_active_calls_idle_when_upload_fails(self) -> None:
+        active = make_active(self.agent)
+        for _ in range(110):
+            active.aggregator.add_frame(50.0)
+        self.agent._active = active
+        self.agent._state = STATE_CAPTURING
+
+        with mock.patch.object(self.uploader, "save", side_effect=OSError("disk full")), \
+                mock.patch.object(self.agent, "_live_status_idle", wraps=self.agent._live_status_idle) as idle:
+            self.agent._finish_active("test", try_upload=False)
+
+        idle.assert_called_once()
+        self.assertEqual(len(self.uploader.saved), 0)
+        self.assertFalse(self.client.live_status[-1]["is_playing"])
+
+    def test_finish_active_calls_idle_when_capture_stop_fails(self) -> None:
+        active = make_active(self.agent)
+        active.capture = mock.Mock()
+        active.capture.stop.side_effect = RuntimeError("boom")
+        self.agent._active = active
+        self.agent._state = STATE_CAPTURING
+
+        with mock.patch.object(self.agent, "_live_status_idle", wraps=self.agent._live_status_idle) as idle:
+            with self.assertRaises(RuntimeError):
+                self.agent._finish_active("test", try_upload=False)
+
+        idle.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

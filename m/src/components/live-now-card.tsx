@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 
-import { LiveSessionModal } from '@/components/live-session-modal';
 import type { LiveStatus } from '@/hooks/use-live-status';
 import { formatFps } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
 import { tabularNums } from '@/lib/theme';
 import { useTheme } from '@/lib/theme-context';
-import type { FpsSample } from '@/types/telemetry';
 
 function formatTempC(value: number | null): string | null {
   return value === null ? null : `${Math.round(value)}°C`;
@@ -16,23 +14,21 @@ function formatTempC(value: number | null): string | null {
 
 type LiveNowCardProps = {
   status: LiveStatus;
-  /** In-memory samples appended on every `useLiveStatus` poll while playing. */
-  liveSamples: FpsSample[];
-  /** Id of the matching `games` record, when the live game is already in the library. */
-  historyGameId: string | null;
+  /** Opens the full-screen "Live Telemetry" modal. */
+  onOpenModal: () => void;
 };
 
 /**
  * Minimalist "Právě hraji" card rendered at the very top of the main screen:
  * a pulsing green indicator, the game name, the current FPS and a line with
- * the live resolution, graphics API and GPU/CPU temperatures. Pressing it
- * opens the full-screen "Live Telemetry" modal.
+ * the live resolution, graphics API and GPU/CPU temperatures. The whole card
+ * is one Pressable with a visible press opacity; pressing it opens the
+ * full-screen "Live Telemetry" modal.
  */
-export function LiveNowCard({ status, liveSamples, historyGameId }: LiveNowCardProps) {
+export function LiveNowCard({ status, onOpenModal }: LiveNowCardProps) {
   const { language, t } = useI18n();
   const { colors } = useTheme();
   const [pulse] = useState(() => new Animated.Value(0));
-  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -57,10 +53,10 @@ export function LiveNowCard({ status, liveSamples, historyGameId }: LiveNowCardP
   return (
     <View className="mt-2 mb-5">
       <Pressable
-        onPress={() => setModalVisible(true)}
+        onPress={onOpenModal}
         accessibilityRole="button"
         accessibilityLabel={t('liveNow')}
-        className="rounded-2xl border border-hairline bg-surface px-4 py-3.5"
+        className="rounded-2xg border border-hairline bg-surface px-4 py-3.5"
         style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
       >
         <View className="flex-row items-center gap-2">
@@ -108,15 +104,6 @@ export function LiveNowCard({ status, liveSamples, historyGameId }: LiveNowCardP
           </Text>
         ) : null}
       </Pressable>
-
-      {modalVisible ? (
-        <LiveSessionModal
-          status={status}
-          liveSamples={liveSamples}
-          historyGameId={historyGameId}
-          onClose={() => setModalVisible(false)}
-        />
-      ) : null}
     </View>
   );
 }
