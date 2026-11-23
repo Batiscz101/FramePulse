@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from framepulse_agent.metrics import FpsMetrics
+from framepulse_agent.metrics import FpsMetrics, Sample
 from framepulse_agent.supabase import SupabaseError
 from framepulse_agent.upload import SessionRecord, Uploader, build_record, chunked
 
@@ -30,7 +30,7 @@ class BuildRecordTests(unittest.TestCase):
             name="Cyberpunk 2077",
             started_at=datetime(2026, 11, 18, 20, 30, tzinfo=timezone.utc),
             metrics=metrics(),
-            samples=[(0.0, 60.0), (2.0, 59.941)],
+            samples=[Sample(0.0, 60.0), Sample(2.0, 59.941)],
         )
 
         self.assertEqual(record.process_name, "Cyberpunk2077.exe")
@@ -42,7 +42,8 @@ class BuildRecordTests(unittest.TestCase):
         self.assertEqual(record.duration_seconds, 123)
 
         self.assertEqual(len(record.samples), 2)
-        self.assertEqual(record.samples[1], {"timestamp_offset": 2.0, "fps": 59.94})
+        self.assertEqual(record.samples[1]["timestamp_offset"], 2.0)
+        self.assertEqual(record.samples[1]["fps"], 59.94)
 
     def test_local_time_is_converted_to_utc(self) -> None:
         local = datetime(2026, 11, 18, 12, 0).astimezone()
@@ -61,7 +62,7 @@ class BuildRecordTests(unittest.TestCase):
             name="Game",
             started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             metrics=metrics(),
-            samples=[(0.0, 60.0)],
+            samples=[Sample(0.0, 60.0, gpu_temp=55.0, cpu_temp=60.0, gpu_load=12.5, cpu_load=30.0)],
             resolution="2560x1440",
             display_mode="Fullscreen",
             graphics_api="DX11",
@@ -82,11 +83,16 @@ class BuildRecordTests(unittest.TestCase):
         self.assertEqual(record.gpu_load_avg, 12.5)
         self.assertEqual(record.cpu_temp_avg, 60.0)
         self.assertEqual(record.cpu_load_avg, 30.0)
+        self.assertEqual(record.samples[0]["gpu_temp"], 55.0)
+        self.assertEqual(record.samples[0]["cpu_temp"], 60.0)
+        self.assertEqual(record.samples[0]["gpu_load"], 12.5)
+        self.assertEqual(record.samples[0]["cpu_load"], 30.0)
 
         restored = SessionRecord.from_dict(json.loads(record.to_json()))
         self.assertEqual(restored.resolution, "2560x1440")
         self.assertEqual(restored.game_settings, {"vsync": True, "fps_limit": 144})
         self.assertEqual(restored.gpu_temp_max, 61.0)
+        self.assertEqual(restored.samples[0]["gpu_load"], 12.5)
 
 
 class SessionRecordTests(unittest.TestCase):
@@ -96,7 +102,7 @@ class SessionRecordTests(unittest.TestCase):
             name="Game",
             started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             metrics=metrics(),
-            samples=[(0.0, 60.0)],
+            samples=[Sample(0.0, 60.0)],
         )
         record.session_id = "00000000-0000-0000-0000-000000000000"
 
@@ -174,7 +180,7 @@ class UploaderTests(unittest.TestCase):
             name="Game",
             started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             metrics=FpsMetrics(60.0, 50.0, 70.0, 30.0, 1800, 3),
-            samples=[(0.0, 60.0), (2.0, 61.0), (4.0, 59.0)],
+            samples=[Sample(0.0, 60.0), Sample(2.0, 61.0), Sample(4.0, 59.0)],
         )
         return record
 
@@ -191,6 +197,29 @@ class UploaderTests(unittest.TestCase):
             self.assertIn(record.session_id, client.sessions)
             self.assertEqual(len(client.samples), 3)
             self.assertEqual(client.delete_calls, 1)
+
+    def test_upload_sends_sample_telemetry(self) -> None:
+        client = FakeClient()
+        with tempfile.TemporaryDirectory() as tmp:
+            uploader = Uploader(client, Path(tmp) / "outbox", chunk_size=10)
+            record = build_record(
+                process_name="game.exe",
+                name="Game",
+                started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                metrics=FpsMetrics(60.0, 50.0, 70.0, 30.0, 1800, 3),
+                samples=[Sample(0.0, 60.0, gpu_temp=55.0, cpu_temp=60.0, gpu_load=12.0, cpu_load=30.0)],
+            )
+
+            self.assertTrue(uploader.submit(record))
+
+            row = client.samples[0]
+            self.assertEqual(row["session_id"], record.session_id)
+            self.assertEqual(row["timestamp_offset"], 0.0)
+            self.assertEqual(row["fps"], 60.0)
+            self.assertEqual(row["gpu_temp"], 55.0)
+            self.assertEqual(row["cpu_temp"], 60.0)
+            self.assertEqual(row["gpu_load"], 12.0)
+            self.assertEqual(row["cpu_load"], 30.0)
 
     def test_duplicate_samples_are_rewritten(self) -> None:
         client = FakeClient(fail_once=True)

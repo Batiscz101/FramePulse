@@ -65,14 +65,22 @@ create table if not exists public.fps_samples (
   timestamp_offset numeric(10, 3) not null check (timestamp_offset >= 0),
   fps numeric(7, 2) not null check (fps >= 0),
   gpu_temp numeric(5, 2),
-  cpu_temp numeric(5, 2)
+  cpu_temp numeric(5, 2),
+  gpu_load numeric(5, 2),
+  cpu_load numeric(5, 2)
 );
 
 comment on table public.fps_samples is 'FPS samples during the session.';
 comment on column public.fps_samples.timestamp_offset is 'Seconds from the start of the session.';
 comment on column public.fps_samples.fps is 'Measured FPS at the given time.';
-comment on column public.fps_samples.gpu_temp is 'Average GPU temperature in °C at the sample (nullable).';
-comment on column public.fps_samples.cpu_temp is 'Average CPU temperature in °C at the sample (nullable).';
+comment on column public.fps_samples.gpu_temp is 'GPU temperature in °C at the sample (nullable).';
+comment on column public.fps_samples.cpu_temp is 'CPU temperature in °C at the sample (nullable).';
+comment on column public.fps_samples.gpu_load is 'GPU load in % at the sample (nullable).';
+comment on column public.fps_samples.cpu_load is 'CPU load in % at the sample (nullable).';
+
+-- Existing installs: add the load columns without touching the table.
+alter table public.fps_samples add column if not exists gpu_load numeric(5, 2);
+alter table public.fps_samples add column if not exists cpu_load numeric(5, 2);
 
 -- Live status: the "právě hraji" row. The table has a single row (id = 'default').
 create table if not exists public.live_status (
@@ -86,6 +94,8 @@ create table if not exists public.live_status (
   graphics_api text,
   gpu_temp numeric(5, 2),
   cpu_temp numeric(5, 2),
+  gpu_load numeric(5, 2),
+  cpu_load numeric(5, 2),
   updated_at timestamptz not null default now()
 );
 
@@ -100,7 +110,13 @@ comment on column public.live_status.resolution is 'Window resolution of the cur
 comment on column public.live_status.graphics_api is 'Graphics API of the current session: DX12, DX11, Vulkan or OpenGL.';
 comment on column public.live_status.gpu_temp is 'GPU temperature in °C, when the agent can read it.';
 comment on column public.live_status.cpu_temp is 'CPU temperature in °C, when the agent can read it.';
+comment on column public.live_status.gpu_load is 'GPU load in %, when the agent can read it.';
+comment on column public.live_status.cpu_load is 'CPU load in %, when the agent can read it.';
 comment on column public.live_status.updated_at is 'When the agent last wrote this row.';
+
+-- Existing installs: add the load columns without touching the table.
+alter table public.live_status add column if not exists gpu_load numeric(5, 2);
+alter table public.live_status add column if not exists cpu_load numeric(5, 2);
 
 -- ---------------------------------------------------------------------------
 -- 2. Indexy

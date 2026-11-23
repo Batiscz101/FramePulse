@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from framepulse_agent.metrics import FrameAggregator
+from framepulse_agent.metrics import FrameAggregator, Sample
 
 
 class FrameAggregatorTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class FrameAggregatorTests(unittest.TestCase):
 
         samples = aggregator.samples()
         self.assertEqual(len(samples), 1)
-        self.assertEqual(samples[0], (0.0, 100.0))
+        self.assertEqual(samples[0], Sample(0.0, 100.0))
 
         metrics = aggregator.metrics()
         self.assertEqual(metrics.frame_count, 100)
@@ -34,13 +34,33 @@ class FrameAggregatorTests(unittest.TestCase):
         aggregator.finish()
         samples = aggregator.samples()
         self.assertEqual(len(samples), 1)
-        self.assertEqual(samples[0][0], 0.0)
-        self.assertAlmostEqual(samples[0][1], 100.0, places=3)
+        self.assertEqual(samples[0].offset, 0.0)
+        self.assertAlmostEqual(samples[0].fps, 100.0, places=3)
 
         metrics = aggregator.metrics()
         self.assertAlmostEqual(metrics.avg_fps, 100.0, places=3)
         self.assertAlmostEqual(metrics.duration_seconds, 0.5, places=3)
         self.assertAlmostEqual(metrics.total_seconds, 1.0, places=3)
+
+    def test_samples_carry_telemetry(self) -> None:
+        aggregator = FrameAggregator(sample_seconds=1.0, warmup_seconds=0.0)
+        aggregator.set_telemetry(gpu_temp=55.5, cpu_temp=61.0, gpu_load=12.0, cpu_load=33.0)
+        for _ in range(100):
+            aggregator.add_frame(10.0)
+
+        samples = aggregator.samples()
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(samples[0].gpu_temp, 55.5)
+        self.assertEqual(samples[0].cpu_temp, 61.0)
+        self.assertEqual(samples[0].gpu_load, 12.0)
+        self.assertEqual(samples[0].cpu_load, 33.0)
+
+    def test_samples_without_telemetry_default_to_none(self) -> None:
+        aggregator = FrameAggregator(sample_seconds=1.0, warmup_seconds=0.0)
+        for _ in range(100):
+            aggregator.add_frame(10.0)
+        self.assertIsNone(aggregator.samples()[0].gpu_temp)
+        self.assertIsNone(aggregator.samples()[0].cpu_load)
 
     def test_one_percent_low(self) -> None:
         aggregator = FrameAggregator(sample_seconds=60.0, warmup_seconds=0.0)

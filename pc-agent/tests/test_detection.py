@@ -157,6 +157,8 @@ def game_window(
     height: int = 1440,
     monitor: tuple[int, int, int, int] = (0, 0, 2560, 1440),
     topmost: bool = False,
+    is_foreground: bool = True,
+    area_ratio: float = 1.0,
 ) -> WindowInfo:
     rect = wintypes.RECT()
     rect.left, rect.top, rect.right, rect.bottom = 0, 0, width, height
@@ -166,8 +168,8 @@ def game_window(
         exe_path=r"D:\Games\MyGame\game.exe",
         title="My Game",
         class_name="UnrealWindow",
-        area_ratio=1.0,
-        is_foreground=True,
+        area_ratio=area_ratio,
+        is_foreground=is_foreground,
         is_minimized=False,
         rect=rect,
         monitor_rect=monitor,
@@ -197,8 +199,39 @@ class GameWindowFactsTests(unittest.TestCase):
         with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[info]):
             self.assertEqual(game_window_facts(77), ("2560x1440", "Fullscreen"))
 
-    def test_none_when_no_window(self) -> None:
-        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[]):
+    def test_prefers_foreground_window_of_the_game(self) -> None:
+        background = game_window(pid=500, width=2560, height=1440, is_foreground=False)
+        foreground = game_window(pid=500, width=800, height=600, is_foreground=True)
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[background, foreground]):
+            resolution, _ = game_window_facts(500)
+        self.assertEqual(resolution, "800x600")
+
+    def test_largest_window_when_not_in_foreground(self) -> None:
+        small = game_window(pid=500, width=640, height=360, area_ratio=0.25, is_foreground=False)
+        large = game_window(pid=500, width=2560, height=1440, area_ratio=0.95, is_foreground=False)
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[small, large]):
+            resolution, _ = game_window_facts(500)
+        self.assertEqual(resolution, "2560x1440")
+
+    def test_falls_back_to_foreground_window_of_the_game(self) -> None:
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[]), \
+                mock.patch(
+                    "framepulse_agent.detection._foreground_window_of_game",
+                    return_value=game_window(pid=77, width=1920, height=1080),
+                ):
+            resolution, _ = game_window_facts(77)
+        self.assertEqual(resolution, "1920x1080")
+
+    def test_resolution_is_filled_from_monitor_when_no_window(self) -> None:
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[]), \
+                mock.patch("framepulse_agent.detection._foreground_window_of_game", return_value=None), \
+                mock.patch("framepulse_agent.detection._monitor_resolution", return_value="1920x1080"):
+            self.assertEqual(game_window_facts(999), ("1920x1080", None))
+
+    def test_no_window_and_no_monitor(self) -> None:
+        with mock.patch("framepulse_agent.detection.enumerate_windows", return_value=[]), \
+                mock.patch("framepulse_agent.detection._foreground_window_of_game", return_value=None), \
+                mock.patch("framepulse_agent.detection._monitor_resolution", return_value=None):
             self.assertEqual(game_window_facts(999), (None, None))
 
 

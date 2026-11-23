@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from framepulse_agent.metrics import FpsMetrics
+from framepulse_agent.metrics import FpsMetrics, Sample
 from framepulse_agent.supabase import SupabaseClient, SupabaseError, is_duplicate
 
 LOG = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class SessionRecord:
     min_fps: float
     max_fps: float
     duration_seconds: int
-    samples: list[dict[str, float]] = field(default_factory=list)
+    samples: list[dict[str, Any]] = field(default_factory=list)
     session_id: str | None = None
     # Game facts captured during the session (v1.2.0).
     resolution: str | None = None
@@ -67,13 +67,17 @@ class SessionRecord:
         )
 
 
+def _round_opt(value: float | None, digits: int = 2) -> float | None:
+    return None if value is None else round(float(value), digits)
+
+
 def build_record(
     *,
     process_name: str,
     name: str,
     started_at: datetime,
     metrics: FpsMetrics,
-    samples: Iterable[tuple[float, float]],
+    samples: Iterable[Sample],
     resolution: str | None = None,
     display_mode: str | None = None,
     graphics_api: str | None = None,
@@ -97,8 +101,15 @@ def build_record(
         max_fps=float(values["max_fps"]),
         duration_seconds=int(values["duration_seconds"]),
         samples=[
-            {"timestamp_offset": round(float(offset), 2), "fps": round(float(fps), 2)}
-            for offset, fps in samples
+            {
+                "timestamp_offset": round(float(sample.offset), 2),
+                "fps": round(float(sample.fps), 2),
+                "gpu_temp": _round_opt(sample.gpu_temp),
+                "cpu_temp": _round_opt(sample.cpu_temp),
+                "gpu_load": _round_opt(sample.gpu_load),
+                "cpu_load": _round_opt(sample.cpu_load),
+            }
+            for sample in samples
         ],
         resolution=resolution,
         display_mode=display_mode,
@@ -267,6 +278,10 @@ class Uploader:
                 "session_id": record.session_id,
                 "timestamp_offset": float(sample["timestamp_offset"]),
                 "fps": float(sample["fps"]),
+                "gpu_temp": sample.get("gpu_temp"),
+                "cpu_temp": sample.get("cpu_temp"),
+                "gpu_load": sample.get("gpu_load"),
+                "cpu_load": sample.get("cpu_load"),
             }
             for sample in record.samples
         ]

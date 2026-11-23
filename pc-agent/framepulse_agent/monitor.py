@@ -511,6 +511,8 @@ class GameAgent:
             "current_fps": None,
             "gpu_temp": None,
             "cpu_temp": None,
+            "gpu_load": None,
+            "cpu_load": None,
             "resolution": None,
             "graphics_api": None,
             "updated_at": _utc_now_iso(),
@@ -528,6 +530,8 @@ class GameAgent:
         current_fps: float | None = None,
         gpu_temp: float | None = None,
         cpu_temp: float | None = None,
+        gpu_load: float | None = None,
+        cpu_load: float | None = None,
     ) -> None:
         """Writes the singleton `live_status` row (id = 'default')."""
         row: dict[str, Any] = {
@@ -540,6 +544,8 @@ class GameAgent:
             "current_fps": current_fps if is_playing else None,
             "gpu_temp": gpu_temp if is_playing else None,
             "cpu_temp": cpu_temp if is_playing else None,
+            "gpu_load": gpu_load if is_playing else None,
+            "cpu_load": cpu_load if is_playing else None,
             "resolution": active.resolution if is_playing else None,
             "graphics_api": active.graphics_api if is_playing else None,
             "updated_at": _utc_now_iso(),
@@ -561,13 +567,20 @@ class GameAgent:
         except Exception:
             LOG.debug("CPU reading failed", exc_info=True)
             cpu = None
+
+        telemetry = {
+            "gpu_temp": gpu.temp_c if gpu is not None else None,
+            "cpu_temp": cpu.temp_c if cpu is not None else None,
+            "gpu_load": gpu.load_percent if gpu is not None else None,
+            "cpu_load": cpu.load_percent if cpu is not None else None,
+        }
         active.telemetry.record(gpu, cpu)
+        active.aggregator.set_telemetry(**telemetry)
         self._live_status(
             active,
             is_playing=True,
             current_fps=active.aggregator.live_fps(),
-            gpu_temp=gpu.temp_c if gpu is not None else None,
-            cpu_temp=cpu.temp_c if cpu is not None else None,
+            **telemetry,
         )
 
     # -- helpers -------------------------------------------------------------

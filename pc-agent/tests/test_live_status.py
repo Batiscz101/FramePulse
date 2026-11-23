@@ -181,7 +181,7 @@ class AgentLiveStatusTests(unittest.TestCase):
 
     def test_live_status_row_when_stopped_is_zeroed(self) -> None:
         active = make_active(self.agent)
-        self.agent._live_status(active, is_playing=True, current_fps=60.0, gpu_temp=55.0, cpu_temp=61.0)
+        self.agent._live_status(active, is_playing=True, current_fps=60.0, gpu_temp=55.0, cpu_temp=61.0, gpu_load=10.0, cpu_load=20.0)
         self.agent._live_status(active, is_playing=False)
 
         row = self.client.live_status[-1]
@@ -189,10 +189,12 @@ class AgentLiveStatusTests(unittest.TestCase):
         self.assertIsNone(row["current_fps"])
         self.assertIsNone(row["gpu_temp"])
         self.assertIsNone(row["cpu_temp"])
+        self.assertIsNone(row["gpu_load"])
+        self.assertIsNone(row["cpu_load"])
         self.assertIsNone(row["resolution"])
         self.assertIsNone(row["graphics_api"])
 
-    def test_live_update_records_fps_and_temperatures(self) -> None:
+    def test_live_update_records_fps_and_telemetry(self) -> None:
         active = make_active(self.agent)
         with mock.patch.object(sensors, "read_gpu_stats", return_value=GpuStats(temp_c=55.0, load_percent=10.0)), \
                 mock.patch.object(sensors, "read_cpu_stats", return_value=CpuStats(temp_c=60.0, load_percent=20.0)):
@@ -202,8 +204,28 @@ class AgentLiveStatusTests(unittest.TestCase):
         self.assertTrue(row["is_playing"])
         self.assertEqual(row["gpu_temp"], 55.0)
         self.assertEqual(row["cpu_temp"], 60.0)
+        self.assertEqual(row["gpu_load"], 10.0)
+        self.assertEqual(row["cpu_load"], 20.0)
         self.assertEqual(active.telemetry.summary()["gpu_temp_avg"], 55.0)
+        self.assertEqual(active.telemetry.summary()["gpu_load_avg"], 10.0)
         self.assertEqual(active.telemetry.summary()["cpu_temp_avg"], 60.0)
+        self.assertEqual(active.telemetry.summary()["cpu_load_avg"], 20.0)
+
+    def test_live_update_telemetry_reaches_samples(self) -> None:
+        active = make_active(self.agent)
+        with mock.patch.object(sensors, "read_gpu_stats", return_value=GpuStats(temp_c=55.0, load_percent=10.0)), \
+                mock.patch.object(sensors, "read_cpu_stats", return_value=CpuStats(temp_c=60.0, load_percent=20.0)):
+            self.agent._live_update(active)
+        for _ in range(110):
+            active.aggregator.add_frame(50.0)
+        active.aggregator.finish()
+
+        samples = active.aggregator.samples()
+        self.assertTrue(samples)
+        self.assertEqual(samples[0].gpu_temp, 55.0)
+        self.assertEqual(samples[0].cpu_temp, 60.0)
+        self.assertEqual(samples[0].gpu_load, 10.0)
+        self.assertEqual(samples[0].cpu_load, 20.0)
 
     def test_live_status_survives_sensor_failures(self) -> None:
         active = make_active(self.agent)

@@ -144,6 +144,30 @@ class SupabaseClientTests(unittest.TestCase):
         self.assertEqual(call["url"], "https://example.supabase.co/rest/v1/fps_samples")
         self.assertEqual(call["json"][0]["fps"], 60.0)
 
+    def test_insert_samples_posts_telemetry_fields(self) -> None:
+        session = FakeSession([FakeResponse(201, b"")])
+        client = SupabaseClient("https://example.supabase.co", "key", session=session)
+
+        client.insert_samples(
+            [
+                {
+                    "session_id": "abc",
+                    "timestamp_offset": 0.0,
+                    "fps": 60.0,
+                    "gpu_temp": 55.0,
+                    "cpu_temp": 61.0,
+                    "gpu_load": 12.5,
+                    "cpu_load": 30.0,
+                }
+            ]
+        )
+
+        row = session.calls[0]["json"][0]
+        self.assertEqual(
+            (row["gpu_temp"], row["cpu_temp"], row["gpu_load"], row["cpu_load"]),
+            (55.0, 61.0, 12.5, 30.0),
+        )
+
     def test_server_error_is_retried(self) -> None:
         session = FakeSession(
             [FakeResponse(503, b'{"message":"unavailable"}'), FakeResponse(200, b"[]")]

@@ -40,6 +40,18 @@ class FpsMetrics:
         }
 
 
+@dataclass(frozen=True)
+class Sample:
+    """One FPS sample with the GPU/CPU telemetry read around its time."""
+
+    offset: float
+    fps: float
+    gpu_temp: float | None = None
+    cpu_temp: float | None = None
+    gpu_load: float | None = None
+    cpu_load: float | None = None
+
+
 class FrameAggregator:
     """Accepts frame times and builds samples + metrics from them.
 
@@ -60,7 +72,12 @@ class FrameAggregator:
         self._lock = threading.Lock()
         self._elapsed_ms = 0.0
         self._frame_times: list[float] = []
-        self._samples: list[tuple[float, float]] = []
+        self._samples: list[Sample] = []
+        # Latest telemetry values; attached to samples when they close.
+        self._gpu_temp: float | None = None
+        self._cpu_temp: float | None = None
+        self._gpu_load: float | None = None
+        self._cpu_load: float | None = None
 
         self._bucket_ms = 0.0
         self._bucket_frames = 0
@@ -104,9 +121,24 @@ class FrameAggregator:
 
     # -- output --------------------------------------------------------------
 
-    def samples(self) -> list[tuple[float, float]]:
+    def samples(self) -> list[Sample]:
         with self._lock:
             return list(self._samples)
+
+    def set_telemetry(
+        self,
+        *,
+        gpu_temp: float | None = None,
+        cpu_temp: float | None = None,
+        gpu_load: float | None = None,
+        cpu_load: float | None = None,
+    ) -> None:
+        """Stores the latest GPU/CPU readings; they are attached to samples."""
+        with self._lock:
+            self._gpu_temp = gpu_temp
+            self._cpu_temp = cpu_temp
+            self._gpu_load = gpu_load
+            self._cpu_load = cpu_load
 
     def frame_count(self) -> int:
         with self._lock:
@@ -145,7 +177,7 @@ class FrameAggregator:
         worst = sorted(frame_times, reverse=True)[:worst_count]
         min_fps = 1000.0 / (sum(worst) / len(worst))
 
-        max_fps = max((fps for _, fps in samples), default=avg_fps)
+        max_fps = max((sample.fps for sample in samples), default=avg_fps)
 
         return FpsMetrics(
             avg_fps=avg_fps,
@@ -168,7 +200,16 @@ class FrameAggregator:
 
         fps = self._bucket_frames / seconds
         offset = max(0.0, (self._bucket_start_ms - self._warmup_ms) / 1000.0)
-        self._samples.append((round(offset, 1), round(fps, 2)))
+        self._samples.append(
+            Sample(
+                offset=round(offset, 1),
+                fps=round(fps, 2),
+                gpu_temp=self._gpu_temp,
+                cpu_temp=self._cpu_temp,
+                gpu_load=self._gpu_load,
+                cpu_load=self._cpu_load,
+            )
+        )
 
         self._bucket_start_ms += self._bucket_ms
         self._bucket_ms = 0.0

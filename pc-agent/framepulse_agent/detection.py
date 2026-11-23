@@ -29,6 +29,10 @@ GWL_EXSTYLE = -20
 
 MONITOR_DEFAULTTONEAREST = 2
 
+# SM_CXSCREEN / SM_CYSCREEN – for GetSystemMetrics (primary monitor size).
+SM_CXSCREEN = 0
+SM_CYSCREEN = 1
+
 # A window whose size covers the monitor within this fraction counts as fullscreen.
 FULLSCREEN_COVER_RATIO = 0.95
 
@@ -229,6 +233,8 @@ user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
 user32.MonitorFromWindow.restype = wintypes.HANDLE
 user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
 user32.GetMonitorInfoW.restype = wintypes.BOOL
+user32.GetSystemMetrics.argtypes = [wintypes.INT]
+user32.GetSystemMetrics.restype = wintypes.INT
 
 
 @dataclass(frozen=True)
@@ -547,13 +553,74 @@ def display_mode_for_window(info: WindowInfo) -> str:
 def game_window_facts(pid: int) -> tuple[str | None, str | None]:
     """Returns (resolution, display mode) of the game window.
 
-    Resolution is e.g. "2560x1440" from the window size; display mode is
-    Fullscreen / Borderless / Windowed. Both are None when no window is found.
+    Resolution is e.g. "2560x1440" from the window size – the largest visible
+    window of the game, or the foreground window when the game is in the
+    foreground (GetForegroundWindow). When no window can be found, the
+    primary monitor size via GetSystemMetrics, so `resolution` is always
+    filled. Display mode is Fullscreen / Borderless / Windowed, or None when
+    it is unknown (e.g. the monitor fallback).
     """
-    info = find_window_by_pid(pid)
+    windows = [window for window in enumerate_windows() if window.pid == pid]
+    info: WindowInfo | None = None
+    if windows:
+        # Prefer the foreground window when the game is in it; otherwise the
+        # largest visible window of the process.
+        info = max(windows, key=lambda window: (window.is_foreground, window.area_ratio))
     if info is None:
-        return None, None
-    width = max(0, info.rect.right - info.rect.left)
-    height = max(0, info.rect.bottom - info.rect.top)
-    resolution = f"{width}x{height}" if width > 0 and height > 0 else None
-    return resolution, display_mode_for_window(info)
+        info = _foreground_window_of_game(pid)
+
+    if info is not None:
+        width = max(0, info.rect.right - info.rect.left)
+        height = max(0, info.rect.bottom - info.rect.top)
+        if width > 0 and height > 0:
+            return f"{width}x{height}", display_mode_for_window(info)
+
+    return _monitor_resolution(), None
+
+
+def _monitor_resolution() -> str | None:
+    """Primary monitor size via GetSystemMetrics, e.g. "2560x1440"."""
+    try:
+        width = user32.GetSystemMetrics(SM_CXSCREEN)
+        height = user32.GetSystemMetrics(SM_CYSCREEN)
+    except Exception:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return f"{width}x{height}"
+
+
+def _foreground_window_of_game(pid: int) -> WindowInfo | None:
+    """The foreground window when it belongs to the game (None otherwise)."""
+    try:
+        hwnd = int(user32.GetForegroundWindow() or 0)
+    except Exception:
+        return None
+    if not hwnd:
+        return None
+
+    foreground_pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(foreground_pid))
+    if int(foreground_pid.value) != pid:
+        return None
+
+    rect, monitor_rect, style, ex_style = _window_geometry(hwnd)
+    if rect.right <= rect.left or rect.bottom <= rect.top:
+        return None
+
+    processes = _process_snapshot()
+    exe, exe_path = processes.get(pid, ("", ""))
+    return WindowInfo(
+        pid=pid,
+        exe=exe,
+        exe_path=exe_path,
+        title="",
+        class_name="",
+        area_ratio=_window_area_ratio(rect, monitor_rect),
+        is_foreground=True,
+        is_minimized=bool(user32.IsIconic(hwnd)),
+        rect=rect,
+        monitor_rect=monitor_rect,
+        style=style,
+        is_topmost=bool(ex_style & WS_EX_TOPMOST),
+    )

@@ -2,8 +2,12 @@
 
 GPU: NVIDIA first via `nvidia-smi` (the NVML command line tool), then the
 AMD/Intel path via Windows performance counters and WMI CIM (video adapter
-names). CPU: `psutil` plus Windows sensors when they are exposed – no
-external drivers are needed.
+names).
+
+CPU: `psutil` sensors when they are exposed; otherwise (Windows, where
+psutil returns nothing) the sources in order: WMI LibreHardwareMonitor /
+OpenHardwareMonitor, the Thermal Zone performance counters and the
+`MSAcpi_ThermalZoneTemperature` WMI class.
 
 Anything that is not available returns `None` instead of raising.
 """
@@ -248,8 +252,8 @@ def cpu_temp_from_sensors(raw: Mapping[str, Any] | None) -> float | None:
     return max(values)
 
 
-def read_cpu_temp() -> float | None:
-    """CPU temperature from psutil sensors, or None when unavailable."""
+def _read_cpu_temp_psutil() -> float | None:
+    """CPU temperature via psutil sensors, or None when unavailable."""
     sensors_fn = getattr(psutil, "sensors_temperatures", None)
     if sensors_fn is None:
         return None
@@ -258,6 +262,205 @@ def read_cpu_temp() -> float | None:
     except Exception:
         return None
     return cpu_temp_from_sensors(raw)
+
+
+def read_cpu_temp() -> float | None:
+    """CPU temperature: psutil sensors, then Windows sources when available."""
+    temp = _read_cpu_temp_psutil()
+    if temp is not None:
+        return temp
+    if os.name == "nt":
+        for reader in (
+            _read_cpu_temp_windows_wmi,
+            _read_cpu_temp_from_perf_counters,
+            _read_cpu_temp_wmi_acpi,
+        ):
+            temp = reader()
+            if temp is not None:
+                return temp
+    return None
+
+
+# ---------------------------------------------------------------------------
+# CPU: Windows fallbacks (psutil has no sensors on Windows)
+# ---------------------------------------------------------------------------
+
+# Name fragments of the CPU temperature sensors we accept from WMI. GPU
+# sensors such as "GPU Core Temperature" must not be mistaken for CPU ones.
+_CPU_SENSOR_NAME_KEYS = ("cpu package", "cpu", "tctl", "core")
+
+_CPU_WMI_SCRIPT = r"""
+$out = @()
+function readprop($o, $n) {
+    try { $v = $o.$n } catch { $v = $null }
+    if ($null -eq $v) { return "" }
+    try { return [System.Convert]::ToString($v, [System.Globalization.CultureInfo]::InvariantCulture) } catch { return "" }
+}
+foreach ($ns in @("root\LibreHardwareMonitor", "root\OpenHardwareMonitor")) {
+    foreach ($cn in @("Sensor", "Temperature")) {
+        $items = @()
+        try { $items = @(Get-CimInstance -Namespace $ns -ClassName $cn -ErrorAction Stop) } catch { $items = @() }
+        foreach ($s in $items) {
+            if ($null -eq $s) { continue }
+            $type = (readprop $s "Type") + " " + (readprop $s "SensorType")
+            if (-not $type.ToLower().Contains("temperature")) { continue }
+            $name = readprop $s "Name"
+            $value = readprop $s "Value"
+            if (-not $value) { $value = readprop $s "CurrentTemperature" }
+            if ($name -and $value) { $out += ($name + "`t" + $value) }
+        }
+        if ($out.Count -gt 0) { break }
+    }
+    if ($out.Count -gt 0) { break }
+}
+if ($out.Count -gt 0) { $out }
+"""
+
+_CPU_PERF_COUNTER_SCRIPT = r"""$out = @()
+$c = "\Thermal Zone Information(*)\Temperature"
+$s = Get-Counter -ErrorAction SilentlyContinue -Counter $c
+if ($s -and $s.CounterSamples) {
+    foreach ($sample in $s.CounterSamples) {
+        $v = $sample.CookedValue
+        if ($v -is [double] -or $v -is [int]) {
+            $out += [System.Convert]::ToString($v, [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+}
+if ($out.Count -gt 0) { $out }
+"""
+
+_CPU_WMI_ACPI_SCRIPT = r"""
+$out = @()
+try {
+    foreach ($s in (Get-CimInstance -Namespace root\WMI -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop)) {
+        if ($null -eq $s) { continue }
+        try { $v = $s.CurrentTemperature } catch { $v = $null }
+        if ($null -ne $v) {
+            $out += [System.Convert]::ToString($v, [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+} catch { }
+if ($out.Count -gt 0) { $out }
+"""
+
+
+def parse_wmi_temperatures(text: str) -> list[tuple[str, float]]:
+    """Parses PowerShell WMI output: lines of `name<TAB>value` -> [(name, value)]."""
+    result: list[tuple[str, float]] = []
+    for line in text.splitlines():
+        name, sep, raw = line.partition("\t")
+        if not sep:
+            continue
+        value = _to_float(raw)
+        if value is None:
+            continue
+        result.append((name.strip(), value))
+    return result
+
+
+def _is_cpu_name(name: str) -> bool:
+    """True for CPU sensor names like "CPU Package"/"Core 0"/"Tctl"."""
+    lowered = name.lower()
+    if not any(key in lowered for key in _CPU_SENSOR_NAME_KEYS):
+        return False
+    # GPU sensors such as "GPU Core Temperature" are not CPU sensors.
+    return not ("gpu" in lowered and "cpu" not in lowered)
+
+
+def _normalize_wmi_temperature(value: float | None) -> float | None:
+    """Accepts °C or Kelvin readings and returns °C in the valid range."""
+    if value is None:
+        return None
+    for candidate in (value, value - 273.15):
+        if 20.0 <= candidate <= 115.0:
+            return candidate
+    return None
+
+
+def _cpu_temp_from_wmi_sensors(text: str) -> float | None:
+    """CPU temperature from WMI LibreHardwareMonitor/OpenHardwareMonitor sensors."""
+    candidates: list[tuple[str, float]] = []
+    for name, raw in parse_wmi_temperatures(text):
+        normalized = _normalize_wmi_temperature(raw)
+        if normalized is not None:
+            candidates.append((name, normalized))
+
+    named = [candidate for candidate in candidates if _is_cpu_name(candidate[0])]
+    for keyword in ("cpu package", "tctl", "cpu"):
+        for name, value in named:
+            if keyword in name.lower():
+                return value
+    if named:
+        return max(value for _, value in named)
+
+    # Sensors without a name: accept the hottest reading.
+    unnamed = [value for name, value in candidates if not name]
+    return max(unnamed) if unnamed else None
+
+
+def _read_cpu_temp_windows_wmi() -> float | None:
+    """WMI path (a): LibreHardwareMonitor/OpenHardwareMonitor temperature sensors."""
+    text = _run_powershell(_CPU_WMI_SCRIPT, timeout=8.0)
+    if not text or not text.strip():
+        return None
+    return _cpu_temp_from_wmi_sensors(text)
+
+
+def parse_perf_counter_temperatures(text: str) -> list[float]:
+    """Values of the Thermal Zone performance counters (Kelvin)."""
+    result: list[float] = []
+    for line in text.splitlines():
+        value = _to_float(line.strip())
+        if value is not None:
+            result.append(value)
+    return result
+
+
+def _cpu_temp_from_perf_counters(text: str) -> float | None:
+    """Hottest thermal zone in °C, or None (the counters report Kelvin)."""
+    valid: list[float] = []
+    for value in parse_perf_counter_temperatures(text):
+        temp = value - 273.15
+        if 20.0 <= temp <= 115.0:
+            valid.append(temp)
+    return max(valid) if valid else None
+
+
+def _read_cpu_temp_from_perf_counters() -> float | None:
+    """Windows performance counter path (b): \\Thermal Zone Information(*)."""
+    text = _run_powershell(_CPU_PERF_COUNTER_SCRIPT, timeout=8.0)
+    if not text or not text.strip():
+        return None
+    return _cpu_temp_from_perf_counters(text)
+
+
+def parse_msacpi_temperatures(text: str) -> list[float]:
+    """Values of `MSAcpi_ThermalZoneTemperature` (0.1 K units)."""
+    result: list[float] = []
+    for line in text.splitlines():
+        value = _to_float(line.strip())
+        if value is not None:
+            result.append(value)
+    return result
+
+
+def _cpu_temp_from_wmi_acpi(text: str) -> float | None:
+    """Hottest MSAcpi thermal zone in °C, or None (values are 0.1 K)."""
+    valid: list[float] = []
+    for value in parse_msacpi_temperatures(text):
+        temp = value / 10.0 - 273.15
+        if 20.0 <= temp <= 115.0:
+            valid.append(temp)
+    return max(valid) if valid else None
+
+
+def _read_cpu_temp_wmi_acpi() -> float | None:
+    """WMI path (c): `MSAcpi_ThermalZoneTemperature` from root\\WMI."""
+    text = _run_powershell(_CPU_WMI_ACPI_SCRIPT, timeout=8.0)
+    if not text or not text.strip():
+        return None
+    return _cpu_temp_from_wmi_acpi(text)
 
 
 def read_cpu_load() -> float | None:
