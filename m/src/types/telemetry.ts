@@ -8,6 +8,10 @@ export type FpsSample = {
   gpuTemp?: number | null;
   /** Average CPU temperature in °C at the sample (`null` when not recorded). */
   cpuTemp?: number | null;
+  /** GPU load in % at the sample (`null` when not recorded). */
+  gpuLoad?: number | null;
+  /** CPU load in % at the sample (`null` when not recorded). */
+  cpuLoad?: number | null;
 };
 
 /**
@@ -105,6 +109,8 @@ export type SampleRow = {
   fps: number | string | null;
   gpu_temp?: number | string | null;
   cpu_temp?: number | string | null;
+  gpu_load?: number | string | null;
+  cpu_load?: number | string | null;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -226,12 +232,15 @@ export function mapSample(row: SampleRow): FpsSample {
     fps: toNumber(row.fps),
     gpuTemp: toNullableNumber(row.gpu_temp),
     cpuTemp: toNullableNumber(row.cpu_temp),
+    gpuLoad: toNullableNumber(row.gpu_load),
+    cpuLoad: toNullableNumber(row.cpu_load),
   };
 }
 
 /**
- * Averaging buckets keeps `react-native-gifted-charts` responsive on long
- * sessions (PresentMon can produce thousands of samples per session).
+ * Point reduction for `react-native-gifted-charts`: keeps the **minimum** FPS
+ * per bucket so drops are not smoothed away when the session has many samples
+ * (PresentMon can produce thousands). `offsetSeconds` stays the bucket average.
  */
 export function downsampleSamples(samples: FpsSample[], maxPoints: number): FpsSample[] {
   if (samples.length <= maxPoints) return samples;
@@ -243,7 +252,7 @@ export function downsampleSamples(samples: FpsSample[], maxPoints: number): FpsS
     const bucket = samples.slice(start, start + bucketSize);
     const offsetSeconds =
       bucket.reduce((total, sample) => total + sample.offsetSeconds, 0) / bucket.length;
-    const fps = bucket.reduce((total, sample) => total + sample.fps, 0) / bucket.length;
+    const fps = Math.min(...bucket.map((sample) => sample.fps));
 
     reduced.push({
       offsetSeconds: Math.round(offsetSeconds),

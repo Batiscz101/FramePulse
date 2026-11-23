@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
-import { LineChart } from 'react-native-gifted-charts';
+import { LineChart, ruleTypes, type referenceConfigType } from 'react-native-gifted-charts';
 
 import { formatTimeRange, toClock } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
@@ -51,6 +51,18 @@ export function FpsChart({ session, samples }: FpsChartProps) {
   const axis = useMemo(() => buildAxis(samples), [samples]);
   const data = useMemo(() => samples.map((sample) => ({ value: sample.fps })), [samples]);
 
+  // The dashed "1% Low" reference line sits at the session's 1% low value.
+  const lowFpsPosition = session.minFps > 0 ? session.minFps : null;
+  const referenceConfig: referenceConfigType = {
+    thickness: 1,
+    color: colors.faint,
+    type: ruleTypes.DASHED,
+    dashWidth: 4,
+    dashGap: 8,
+    labelText: t('lowFpsRef'),
+    labelTextStyle: { color: colors.faint, fontSize: 10, ...tabularNums },
+  };
+
   // Page padding (20 × 2) + card padding (16 × 2) + y-axis labels (32).
   const chartWidth = Math.max(180, windowWidth - 104);
 
@@ -64,12 +76,18 @@ export function FpsChart({ session, samples }: FpsChartProps) {
     <View className="rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4">
       <View className="flex-row items-center justify-between">
         <Text className="text-[13px] font-semibold text-ink">{t('chartTitle')}</Text>
-        <Text className="text-[11px] text-faint">{t('chartHint')}</Text>
+        <View className="flex-row items-center gap-3">
+          <Text className="text-[11px] text-faint">{t('fpsChartNote')}</Text>
+          <Text className="text-[11px] text-faint">{t('chartHint')}</Text>
+        </View>
       </View>
 
       <View className="mt-4" style={{ marginLeft: -4 }}>
         <LineChart
           data={data}
+          showReferenceLine1={lowFpsPosition !== null}
+          referenceLine1Position={lowFpsPosition ?? 0}
+          referenceLine1Config={referenceConfig}
           width={chartWidth}
           height={168}
           adjustToWidth

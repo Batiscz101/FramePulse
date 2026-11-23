@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DayPill } from '@/components/day-pill';
 import { FpsChart } from '@/components/fps-chart';
 import { GameFormModal } from '@/components/game-form-modal';
+import { LoadChart } from '@/components/load-chart';
 import { OfflineBadge } from '@/components/offline-badge';
 import { SessionCompareModal } from '@/components/session-compare';
 import { SessionInfoBadges } from '@/components/session-info-badges';
@@ -356,6 +357,8 @@ export default function GameDetailScreen() {
                 </View>
 
                 <TemperatureChart samples={samples} startMinutes={session.startMinutes} />
+
+                <LoadChart samples={samples} startMinutes={session.startMinutes} />
 
                 <Text className="mt-4 px-1 text-[10px] leading-4 text-faint">
                   {t('chartFootnote')}

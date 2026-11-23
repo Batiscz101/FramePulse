@@ -15,6 +15,8 @@ export type LiveStatusRow = {
   graphics_api: string | null;
   gpu_temp: number | string | null;
   cpu_temp: number | string | null;
+  gpu_load?: number | string | null;
+  cpu_load?: number | string | null;
   updated_at: string | null;
 };
 
@@ -29,6 +31,8 @@ export type LiveStatus = {
   graphicsApi: string | null;
   gpuTemp: number | null;
   cpuTemp: number | null;
+  gpuLoad: number | null;
+  cpuLoad: number | null;
 };
 
 const POLL_INTERVAL_MS = 6000;
@@ -45,10 +49,12 @@ const EMPTY_LIVE_STATUS: LiveStatus = {
   graphicsApi: null,
   gpuTemp: null,
   cpuTemp: null,
+  gpuLoad: null,
+  cpuLoad: null,
 };
 
-function toNullableNumber(value: number | string | null): number | null {
-  if (value === null || value === '') return null;
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -77,6 +83,8 @@ function toLiveStatus(row: LiveStatusRow | null): LiveStatus {
     graphicsApi: row.graphics_api ?? null,
     gpuTemp: toNullableNumber(row.gpu_temp),
     cpuTemp: toNullableNumber(row.cpu_temp),
+    gpuLoad: toNullableNumber(row.gpu_load),
+    cpuLoad: toNullableNumber(row.cpu_load),
   };
 }
 

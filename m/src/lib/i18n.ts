@@ -69,6 +69,9 @@ const en = {
     'Data captured by PresentMon. The chart shows average FPS over short intervals of the session.',
   chartTitle: 'FPS over time',
   chartHint: 'Drag to inspect',
+  fpsChartNote:
+    'The curve follows seconds, while Min FPS in the summary is the absolute minimum of individual frames.',
+  lowFpsRef: '1% Low',
 
   /* Game form */
   addGameHint: 'The name appears in the app; the process lets the pc-agent recognize the game.',
@@ -104,6 +107,7 @@ const en = {
   temperatureGpu: 'GPU temperature',
   temperatureCpu: 'CPU temperature',
   temperatureChartTitle: 'GPU & CPU temperature',
+  loadChartTitle: 'GPU & CPU load',
   legendGpu: 'GPU',
   legendCpu: 'CPU',
   noteLabel: 'Note',
@@ -193,6 +197,9 @@ const cs: Record<TranslationKey, string> = {
     'Data zachycená přes PresentMon. Graf zobrazuje průměr FPS v kratších úsecích seance.',
   chartTitle: 'Průběh FPS',
   chartHint: 'Přejeďte prstem',
+  fpsChartNote:
+    'Křivka zobrazuje průběh po sekundách, zatímco Min FPS v souhrnu je absolutní minimum jednotlivého snímku.',
+  lowFpsRef: '1% Lows',
 
   addGameHint: 'Název se zobrazí v aplikaci, proces slouží pc-agentovi k rozpoznání hry.',
   renameGameHint: 'Změna se uloží do Supabase a projeví se i na ostatních zařízeních.',
@@ -227,6 +234,7 @@ const cs: Record<TranslationKey, string> = {
   temperatureGpu: 'Teplota GPU',
   temperatureCpu: 'Teplota CPU',
   temperatureChartTitle: 'Teplota GPU a CPU',
+  loadChartTitle: 'Vytížení GPU a CPU',
   legendGpu: 'GPU',
   legendCpu: 'CPU',
   noteLabel: 'Poznámka',

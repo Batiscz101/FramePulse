@@ -128,8 +128,8 @@ export async function updateSessionNote(sessionId: string, note: string | null):
 }
 
 /**
- * Loads every FPS sample of a session (paged) and averages them down to a
- * chart-friendly number of points.
+ * Loads every FPS sample of a session (paged) and reduces them down to a
+ * chart-friendly number of points (minimum FPS per bucket when downsampled).
  */
 export async function fetchSessionSamples(sessionId: string): Promise<FpsSample[]> {
   const rows: SampleRow[] = [];
@@ -138,7 +138,7 @@ export async function fetchSessionSamples(sessionId: string): Promise<FpsSample[
   for (let page = 0; page < SAMPLE_PAGE_LIMIT; page += 1) {
     const { data, error } = await supabase
       .from('fps_samples')
-      .select('timestamp_offset, fps, gpu_temp, cpu_temp')
+      .select('timestamp_offset, fps, gpu_temp, cpu_temp, gpu_load, cpu_load')
       .eq('session_id', sessionId)
       .order('timestamp_offset', { ascending: true })
       .order('id', { ascending: true })

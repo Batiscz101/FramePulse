@@ -5,7 +5,7 @@ import { X } from 'lucide-react-native';
 
 import { TemperatureChart } from '@/components/temperature-chart';
 import type { LiveStatus } from '@/hooks/use-live-status';
-import { formatTempC } from '@/lib/session-display';
+import { formatPercent, formatTempC } from '@/lib/session-display';
 import { useI18n } from '@/lib/i18n-context';
 import { formatFps } from '@/lib/format';
 import { tabularNums, themeVariables } from '@/lib/theme';
@@ -127,6 +127,10 @@ export function LiveSessionModal({ status, liveSamples, historyGameId, onClose }
           <View className="mt-2 flex-row">
             <LiveInfoRow label={t('badgeGraphicsApi')} value={status.graphicsApi} />
             <LiveInfoRow label={t('temperatureCpu')} value={formatTempC(status.cpuTemp)} />
+          </View>
+          <View className="mt-2 flex-row">
+            <LiveInfoRow label={t('telemetryGpuLoad')} value={formatPercent(status.gpuLoad)} />
+            <LiveInfoRow label={t('telemetryCpuLoad')} value={formatPercent(status.cpuLoad)} />
           </View>
 
           <TemperatureChart samples={liveSamples} startMinutes={startMinutes} height={150} />
