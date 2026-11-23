@@ -4,6 +4,10 @@ export type FpsSample = {
   /** Seconds from the start of the session. */
   offsetSeconds: number;
   fps: number;
+  /** Average GPU temperature in °C at the sample (`null` when not recorded). */
+  gpuTemp?: number | null;
+  /** Average CPU temperature in °C at the sample (`null` when not recorded). */
+  cpuTemp?: number | null;
 };
 
 /**
@@ -99,6 +103,8 @@ export type GameRow = {
 export type SampleRow = {
   timestamp_offset: number | string | null;
   fps: number | string | null;
+  gpu_temp?: number | string | null;
+  cpu_temp?: number | string | null;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -218,6 +224,8 @@ export function mapSample(row: SampleRow): FpsSample {
   return {
     offsetSeconds: Math.max(0, toNumber(row.timestamp_offset)),
     fps: toNumber(row.fps),
+    gpuTemp: toNullableNumber(row.gpu_temp),
+    cpuTemp: toNullableNumber(row.cpu_temp),
   };
 }
 

@@ -81,6 +81,9 @@ const en = {
 
   /* Live status ("Právě hraji") */
   liveNow: 'Právě hraji',
+  liveSessionTitle: 'Live Telemetry',
+  liveSessionDuration: 'Play duration',
+  viewGameHistory: 'View Game History',
 
   /* Session details: badges, telemetry, note, compare */
   badgeResolution: 'Resolution',
@@ -98,6 +101,11 @@ const en = {
   telemetryGpuLoad: 'GPU load',
   telemetryCpuTempAvg: 'CPU temp (avg)',
   telemetryCpuLoad: 'CPU load',
+  temperatureGpu: 'GPU temperature',
+  temperatureCpu: 'CPU temperature',
+  temperatureChartTitle: 'GPU & CPU temperature',
+  legendGpu: 'GPU',
+  legendCpu: 'CPU',
   noteLabel: 'Note',
   notePlaceholder: 'e.g. Ultra + DLSS Quality',
   noteSaved: 'Saved',
@@ -196,6 +204,9 @@ const cs: Record<TranslationKey, string> = {
 
   /* Live status ("Právě hraji") */
   liveNow: 'Právě hraji',
+  liveSessionTitle: 'Živá telemetrie',
+  liveSessionDuration: 'Doba hry',
+  viewGameHistory: 'Zobrazit historii hry',
 
   /* Session details: badges, telemetry, note, compare */
   badgeResolution: 'Rozlišení',
@@ -213,6 +224,11 @@ const cs: Record<TranslationKey, string> = {
   telemetryGpuLoad: 'Vytížení GPU',
   telemetryCpuTempAvg: 'Teplota CPU (průměr)',
   telemetryCpuLoad: 'Vytížení CPU',
+  temperatureGpu: 'Teplota GPU',
+  temperatureCpu: 'Teplota CPU',
+  temperatureChartTitle: 'Teplota GPU a CPU',
+  legendGpu: 'GPU',
+  legendCpu: 'CPU',
   noteLabel: 'Poznámka',
   notePlaceholder: 'např. Ultra + DLSS Quality',
   noteSaved: 'Uloženo',

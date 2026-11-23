@@ -19,6 +19,7 @@ import { SessionCompareModal } from '@/components/session-compare';
 import { SessionInfoBadges } from '@/components/session-info-badges';
 import { SessionNoteEditor } from '@/components/session-note-editor';
 import { SessionTelemetry } from '@/components/session-telemetry';
+import { TemperatureChart } from '@/components/temperature-chart';
 import { useGame } from '@/hooks/use-game';
 import { useSessionSamples } from '@/hooks/use-session-samples';
 import {
@@ -353,6 +354,8 @@ export default function GameDetailScreen() {
                     <FpsChart session={session} samples={samples} />
                   )}
                 </View>
+
+                <TemperatureChart samples={samples} startMinutes={session.startMinutes} />
 
                 <Text className="mt-4 px-1 text-[10px] leading-4 text-faint">
                   {t('chartFootnote')}

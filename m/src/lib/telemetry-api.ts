@@ -138,7 +138,7 @@ export async function fetchSessionSamples(sessionId: string): Promise<FpsSample[
   for (let page = 0; page < SAMPLE_PAGE_LIMIT; page += 1) {
     const { data, error } = await supabase
       .from('fps_samples')
-      .select('timestamp_offset, fps')
+      .select('timestamp_offset, fps, gpu_temp, cpu_temp')
       .eq('session_id', sessionId)
       .order('timestamp_offset', { ascending: true })
       .order('id', { ascending: true })

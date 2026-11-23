@@ -25,6 +25,10 @@ import { useI18n } from '@/lib/i18n-context';
 import { createGame } from '@/lib/telemetry-api';
 import { tabularNums } from '@/lib/theme';
 import { useTheme } from '@/lib/theme-context';
+import type { FpsSample } from '@/types/telemetry';
+
+/** How many live samples the in-memory graph of the live modal keeps. */
+const LIVE_GRAPH_SAMPLES = 120;
 
 export default function GamesScreen() {
   const { language, t } = useI18n();
@@ -33,6 +37,44 @@ export default function GamesScreen() {
   const live = useLiveStatus();
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
+  const [lastLive, setLastLive] = useState(live);
+  const [liveSamples, setLiveSamples] = useState<FpsSample[]>([]);
+
+  // Append one sample per `useLiveStatus` poll: the hook returns a new `live`
+  // object every poll, so adjusting the samples during render appends exactly
+  // once per update (React's adjust-state-during-render pattern).
+  if (live !== lastLive) {
+    setLastLive(live);
+    if (!live.isPlaying) {
+      setLiveSamples([]);
+    } else {
+      const startedAtMs = live.startedAt ? Date.parse(live.startedAt) : Number.NaN;
+      setLiveSamples((previous) => [
+        ...previous.slice(-(LIVE_GRAPH_SAMPLES - 1)),
+        {
+          offsetSeconds: Number.isFinite(startedAtMs)
+            ? Math.max(0, Math.round((Date.now() - startedAtMs) / 1000))
+            : 0,
+          fps: live.currentFps ?? 0,
+          gpuTemp: live.gpuTemp,
+          cpuTemp: live.cpuTemp,
+        },
+      ]);
+    }
+  }
+
+  /** The live game already in the library (matched by process name or name). */
+  const historyGame = useMemo(() => {
+    if (!live.isPlaying) return null;
+    const processName = live.processName?.trim().toLowerCase() ?? '';
+    const gameName = live.gameName?.trim().toLowerCase() ?? '';
+    const byProcess = processName
+      ? games.find((game) => game.processName?.trim().toLowerCase() === processName)
+      : undefined;
+    if (byProcess) return byProcess;
+    if (!gameName) return null;
+    return games.find((game) => game.name.toLowerCase() === gameName) ?? null;
+  }, [games, live]);
 
   const filteredGames = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -71,7 +113,11 @@ export default function GamesScreen() {
         }
         ListHeaderComponent={
           <>
-            <LiveNowCard status={live} />
+            <LiveNowCard
+              status={live}
+              liveSamples={liveSamples}
+              historyGameId={historyGame?.id ?? null}
+            />
             <View className="pb-5 pt-6">
             <View className="flex-row items-start justify-between">
               <View className="flex-1">
