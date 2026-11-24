@@ -73,6 +73,27 @@ class FrameAggregatorTests(unittest.TestCase):
         self.assertAlmostEqual(metrics.min_fps, 10.0, places=3)
         self.assertGreater(metrics.avg_fps, 150.0)
 
+    def test_live_fps_returns_last_sample_fps(self) -> None:
+        # Regression: live_fps() used to subscript the Sample dataclass
+        # (`sample[1]`), which raised and crashed the monitoring loop.
+        aggregator = FrameAggregator(sample_seconds=1.0, warmup_seconds=0.0)
+        self.assertIsNone(aggregator.live_fps())
+
+        for _ in range(100):
+            aggregator.add_frame(10.0)
+
+        self.assertAlmostEqual(aggregator.live_fps(), 100.0, places=3)
+
+    def test_live_fps_from_open_bucket(self) -> None:
+        aggregator = FrameAggregator(sample_seconds=60.0, warmup_seconds=0.0)
+        for _ in range(100):
+            aggregator.add_frame(10.0)
+        aggregator.add_frame(20.0)
+
+        live = aggregator.live_fps()
+        self.assertIsNotNone(live)
+        self.assertGreater(live, 0.0)
+
     def test_max_fps_uses_best_sample(self) -> None:
         aggregator = FrameAggregator(sample_seconds=1.0, warmup_seconds=0.0)
         for _ in range(100):

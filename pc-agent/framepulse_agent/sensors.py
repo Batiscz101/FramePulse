@@ -91,7 +91,11 @@ def _run_command(args: Sequence[str], *, timeout: float) -> str | None:
     if not args:
         return None
     try:
-        if shutil.which(str(args[0])) is None:
+        if os.path.isabs(str(args[0])):
+            # An absolute path (cached tool location) is used as-is.
+            if not os.path.isfile(str(args[0])):
+                return None
+        elif shutil.which(str(args[0])) is None:
             return None
     except OSError:
         return None
@@ -135,9 +139,47 @@ def parse_nvidia_smi_output(text: str) -> GpuStats | None:
     return None
 
 
+# Candidate locations of nvidia-smi.dll's executable (driver installs and the
+# standalone NVSMI package). The first existing path is cached for the run.
+_NVDIA_SMI_CANDIDATES = (
+    r"C:\Windows\System32\nvidia-smi.exe",
+    r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+)
+
+# nvidia-smi path: False = not probed yet, None = probed and unavailable, path = usable.
+_nvidia_smi_path: bool | str | None = False
+
+
+def _locate_nvidia_smi() -> str | None:
+    """Locate nvidia-smi once and cache the result for the run (None if not found)."""
+    global _nvidia_smi_path
+    if _nvidia_smi_path is False:
+        path = None
+        # Prefer the candidates shipped with the driver, then the first hit on PATH.
+        for candidate in _NVDIA_SMI_CANDIDATES:
+            try:
+                if os.path.isfile(candidate):
+                    path = candidate
+                    break
+            except OSError:
+                continue
+        if path is None:
+            try:
+                path = shutil.which("nvidia-smi")
+            except OSError:
+                path = None
+        _nvidia_smi_path = path
+    if _nvidia_smi_path is None or _nvidia_smi_path is False:
+        return None
+    return _nvidia_smi_path
+
+
 def _read_gpu_nvidia_smi() -> GpuStats | None:
+    path = _locate_nvidia_smi()
+    if path is None:
+        return None
     text = _run_command(
-        ["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu", "--format=csv,noheader,nounits"],
+        [path, "--query-gpu=temperature.gpu,utilization.gpu", "--format=csv,noheader,nounits"],
         timeout=5.0,
     )
     if text is None:
@@ -265,20 +307,70 @@ def _read_cpu_temp_psutil() -> float | None:
 
 
 def read_cpu_temp() -> float | None:
-    """CPU temperature: psutil sensors, then Windows sources when available."""
+    """CPU temperature: psutil sensors, then Windows sources when they are known to work."""
     temp = _read_cpu_temp_psutil()
     if temp is not None:
         return temp
     if os.name == "nt":
-        for reader in (
-            _read_cpu_temp_windows_wmi,
-            _read_cpu_temp_from_perf_counters,
-            _read_cpu_temp_wmi_acpi,
+        availability = _cpu_windows_sensors_available
+        for key, reader in (
+            ("wmi", _read_cpu_temp_windows_wmi),
+            ("perf", _read_cpu_temp_from_perf_counters),
+            ("acpi", _read_cpu_temp_wmi_acpi),
         ):
-            temp = reader()
+            # Once the startup probe found no sensor (or a reader has just
+            # missed), skip the expensive PowerShell calls for the rest of
+            # the run – only psutil is polled while playing.
+            if availability.get(key) is False:
+                continue
+            try:
+                temp = reader()
+            except Exception:
+                temp = None
             if temp is not None:
                 return temp
+            if availability.get(key) is None:
+                availability[key] = False
     return None
+
+
+# Which Windows CPU-temperature sources respond, probed once at agent start:
+# {"wmi": ..., "perf": ..., "acpi": ...}. Values are True/False when the probe
+# ran; None means "not probed" (readers are tried, and a miss is remembered).
+# False sources are skipped while playing to avoid spawning PowerShell.
+_cpu_windows_sensors_available: dict[str, bool | None] = {"wmi": None, "perf": None, "acpi": None}
+
+
+def _probe_windows_cpu_sensors() -> dict[str, bool]:
+    """Checks once which Windows CPU-temperature sources return a value."""
+    availability: dict[str, bool] = {"wmi": False, "perf": False, "acpi": False}
+    for key, reader in (
+        ("wmi", _read_cpu_temp_windows_wmi),
+        ("perf", _read_cpu_temp_from_perf_counters),
+        ("acpi", _read_cpu_temp_wmi_acpi),
+    ):
+        try:
+            availability[key] = reader() is not None
+        except Exception:
+            availability[key] = False
+    return availability
+
+
+_startup_probed = False
+
+
+def probe_startup_sensors() -> None:
+    """Runs the sensor-availability checks once when the agent starts."""
+    global _cpu_windows_sensors_available, _startup_probed
+    if _startup_probed:
+        return
+    _startup_probed = True
+    try:
+        _locate_nvidia_smi()
+    except Exception:
+        pass
+    if os.name == "nt":
+        _cpu_windows_sensors_available = _probe_windows_cpu_sensors()
 
 
 # ---------------------------------------------------------------------------

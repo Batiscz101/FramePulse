@@ -15,6 +15,15 @@ import type { LoadState } from '@/hooks/use-games';
  */
 const sampleCache = new Map<string, FpsSample[]>();
 
+/**
+ * Returns the samples of a session already loaded this session run
+ * (finished sessions never change), or null. Used to open the session-compare
+ * view and history instantly.
+ */
+export function getCachedSamples(sessionId: string): FpsSample[] | null {
+  return sampleCache.get(sessionId) ?? null;
+}
+
 /** Loads the FPS series of the selected session. */
 export function useSessionSamples(sessionId: string | undefined) {
   const { language } = useI18n();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 
@@ -25,7 +25,7 @@ type LiveNowCardProps = {
  * is one Pressable with a visible press opacity; pressing it opens the
  * full-screen "Live Telemetry" modal.
  */
-export function LiveNowCard({ status, onOpenModal }: LiveNowCardProps) {
+export const LiveNowCard = memo(function LiveNowCard({ status, onOpenModal }: LiveNowCardProps) {
   const { language, t } = useI18n();
   const { colors } = useTheme();
   const [pulse] = useState(() => new Animated.Value(0));
@@ -106,4 +106,4 @@ export function LiveNowCard({ status, onOpenModal }: LiveNowCardProps) {
       </Pressable>
     </View>
   );
-}
+});

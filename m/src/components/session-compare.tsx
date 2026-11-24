@@ -5,6 +5,7 @@ import { X } from 'lucide-react-native';
 import { type Language, type TranslationKey } from '@/lib/i18n';
 import { useI18n } from '@/lib/i18n-context';
 import { formatFps, formatShortDate } from '@/lib/format';
+import { getCachedSamples } from '@/hooks/use-session-samples';
 import { fetchSessionSamples } from '@/lib/telemetry-api';
 import {
   formatDisplayMode,
@@ -243,12 +244,16 @@ export function SessionCompareModal({ game, onClose }: Props) {
   const { colors } = useTheme();
   const [selectedA, setSelectedA] = useState<string | null>(null);
   const [selectedB, setSelectedB] = useState<string | null>(null);
-  const [samplesA, setSamplesA] = useState<FpsSample[] | null>(null);
-  const [samplesB, setSamplesB] = useState<FpsSample[] | null>(null);
+  const [samplesAState, setSamplesA] = useState<FpsSample[] | null>(null);
+  const [samplesBState, setSamplesB] = useState<FpsSample[] | null>(null);
 
   const sessionA = game.sessions.find((item) => item.id === selectedA) ?? null;
   const sessionB = game.sessions.find((item) => item.id === selectedB) ?? null;
   const comparing = sessionA !== null && sessionB !== null;
+
+  // Sessions already viewed on this screen appear instantly (no chart flash).
+  const samplesA = samplesAState ?? (sessionA ? getCachedSamples(sessionA.id) : null);
+  const samplesB = samplesBState ?? (sessionB ? getCachedSamples(sessionB.id) : null);
 
   useEffect(() => {
     if (!comparing) return;
@@ -265,8 +270,8 @@ export function SessionCompareModal({ game, onClose }: Props) {
         setSamplesB(nextB);
       } catch {
         if (!active) return;
-        setSamplesA([]);
-        setSamplesB([]);
+        setSamplesA((current) => current ?? []);
+        setSamplesB((current) => current ?? []);
       }
     };
     void load();

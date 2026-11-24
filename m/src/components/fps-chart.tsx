@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart, ruleTypes, type referenceConfigType } from 'react-native-gifted-charts';
 
+import { filterSamples, reduceSamples } from '@/lib/chart-data';
 import { formatTimeRange, toClock } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
 import { pointsCount } from '@/lib/i18n';
@@ -43,13 +44,17 @@ function buildAxis(samples: FpsSample[]): Axis {
   return { min, step, sections };
 }
 
-export function FpsChart({ session, samples }: FpsChartProps) {
+export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartProps) {
   const { language, t } = useI18n();
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
 
-  const axis = useMemo(() => buildAxis(samples), [samples]);
-  const data = useMemo(() => samples.map((sample) => ({ value: sample.fps })), [samples]);
+  // Drop invalid points before touching the chart so `null` values can never
+  // break the curve or throw when a tooltip touches it; the series is reduced
+  // to a readable point count.
+  const validSamples = useMemo(() => reduceSamples(filterSamples(samples, 'fps')), [samples]);
+  const axis = useMemo(() => buildAxis(validSamples), [validSamples]);
+  const data = useMemo(() => validSamples.map((sample) => ({ value: sample.fps })), [validSamples]);
 
   // The dashed "1% Low" reference line sits at the session's 1% low value.
   const lowFpsPosition = session.minFps > 0 ? session.minFps : null;
@@ -63,11 +68,11 @@ export function FpsChart({ session, samples }: FpsChartProps) {
     labelTextStyle: { color: colors.faint, fontSize: 10, ...tabularNums },
   };
 
-  // Page padding (20 × 2) + card padding (16 × 2) + y-axis labels (32).
-  const chartWidth = Math.max(180, windowWidth - 104);
+  // Chart width always fits inside the card (page padding + card padding + y-axis).
+  const chartWidth = Math.max(140, Math.min(windowWidth - 104, windowWidth - 64));
 
-  const midSample = samples[Math.floor(samples.length / 2)];
-  const endSample = samples[samples.length - 1];
+  const midSample = validSamples[Math.floor(validSamples.length / 2)];
+  const endSample = validSamples[validSamples.length - 1];
 
   const clockAt = (sample: FpsSample | undefined): string =>
     sample ? toClock(session.startMinutes + sample.offsetSeconds / 60) : '';
@@ -137,7 +142,7 @@ export function FpsChart({ session, samples }: FpsChartProps) {
               _secondary: unknown,
               index: number,
             ) => {
-              const sample = samples[index];
+              const sample = validSamples[index];
               const fps = items?.[0]?.value ?? sample?.fps ?? 0;
               return (
                 <View className="items-center rounded-lg border border-tooltip-border bg-tooltip px-2.5 py-1.5">
@@ -181,4 +186,4 @@ export function FpsChart({ session, samples }: FpsChartProps) {
       </View>
     </View>
   );
-}
+});

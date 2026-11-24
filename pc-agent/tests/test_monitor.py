@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from framepulse_agent.monitor import (
+    LIVE_UPDATE_INTERVAL_SECONDS,
     STATE_CAPTURING,
     STATE_ERROR,
     STATE_IDLE,
@@ -10,6 +11,11 @@ from framepulse_agent.monitor import (
     STATE_STARTING,
     AgentStatus,
 )
+
+
+class LiveUpdateIntervalTests(unittest.TestCase):
+    def test_live_status_is_refreshed_within_five_seconds(self) -> None:
+        self.assertLessEqual(LIVE_UPDATE_INTERVAL_SECONDS, 5.0)
 
 
 class AgentStatusTitleTests(unittest.TestCase):

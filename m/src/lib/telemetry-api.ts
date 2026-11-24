@@ -15,7 +15,7 @@ const GAME_SELECT =
   'id, name, process_name, created_at, sessions(id, played_at, avg_fps, min_fps, max_fps, duration_seconds, resolution, display_mode, graphics_api, game_settings, note, gpu_temp_avg, gpu_temp_max, gpu_load_avg, cpu_temp_avg, cpu_load_avg)';
 
 /** PresentMon sessions can have thousands of samples; the chart never needs more. */
-const MAX_CHART_POINTS = 240;
+const MAX_CHART_POINTS = 75;
 
 /** PostgREST returns at most 1 000 rows per request unless configured higher. */
 const SAMPLE_PAGE_SIZE = 1000;

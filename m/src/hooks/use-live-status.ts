@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 import { supabase } from '@/lib/supabase';
@@ -36,8 +37,8 @@ export type LiveStatus = {
 };
 
 const POLL_INTERVAL_MS = 6000;
-/** The PC agent refreshes the row every 8 s; ignore older rows while not playing. */
-const STALE_MS = 45000;
+/** The PC agent refreshes the row every few seconds; a margin covers clock offsets. */
+const STALE_MS = 90000;
 
 const EMPTY_LIVE_STATUS: LiveStatus = {
   isPlaying: false,
@@ -91,10 +92,13 @@ function toLiveStatus(row: LiveStatusRow | null): LiveStatus {
 /**
  * Reads the `live_status` row (id = 'default') of the PC agent. It refreshes
  * when the screen is focused and then every 6 s while the app is in the
- * foreground; the polling stops as soon as the screen is unfocused.
+ * foreground; when the app goes to the background or the screen is unfocused,
+ * the polling stops to save battery and mobile data, and it resumes immediately
+ * on return.
  */
 export function useLiveStatus(): LiveStatus {
   const [status, setStatus] = useState<LiveStatus>(EMPTY_LIVE_STATUS);
+  const [appState, setAppState] = useState<AppStateStatus>((AppState.currentState ?? 'active') as AppStateStatus);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -102,6 +106,11 @@ export function useLiveStatus(): LiveStatus {
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => setAppState(next));
+    return () => subscription.remove();
   }, []);
 
   const refresh = useCallback(async () => {
@@ -113,19 +122,29 @@ export function useLiveStatus(): LiveStatus {
         .maybeSingle();
 
       if (!mounted.current) return;
-      setStatus(toLiveStatus(data as LiveStatusRow | null));
+      const next = toLiveStatus(data as LiveStatusRow | null);
+      // Keep the same object identity when nothing changed to avoid rerenders.
+      setStatus((current) => (current === next ? current : next));
     } catch {
       // Transient network errors keep the last known status.
     }
   }, []);
 
+  // Poll only while the app is in the foreground; the focus effect refreshes
+  // immediately when the app/screen returns to the foreground.
+  const pollingActive = appState === 'active';
+
+  useEffect(() => {
+    if (!pollingActive) return undefined;
+    const interval = setInterval(() => {
+      void refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [pollingActive, refresh]);
+
   useFocusEffect(
     useCallback(() => {
       void refresh();
-      const interval = setInterval(() => {
-        void refresh();
-      }, POLL_INTERVAL_MS);
-      return () => clearInterval(interval);
     }, [refresh]),
   );
 

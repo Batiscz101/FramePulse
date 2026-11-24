@@ -154,7 +154,7 @@ class FrameAggregator:
             if self._bucket_open and self._bucket_ms >= 200.0:
                 return self._bucket_frames / (self._bucket_ms / 1000.0)
             if self._samples:
-                return self._samples[-1][1]
+                return self._samples[-1].fps
             return None
 
     def metrics(self) -> FpsMetrics:

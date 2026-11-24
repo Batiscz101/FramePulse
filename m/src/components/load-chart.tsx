@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 
+import { filterSamples } from '@/lib/chart-data';
 import { toClock } from '@/lib/format';
 import { useI18n } from '@/lib/i18n-context';
 import { formatPercent } from '@/lib/session-display';
@@ -26,26 +27,34 @@ const AXIS_SECTIONS = 10;
  * a legend and a live-inspectable line chart with % on the y-axis. Renders
  * nothing when no sample carries a load (older sessions).
  */
-export function LoadChart({ samples, startMinutes = 0, height = 160 }: LoadChartProps) {
+export const LoadChart = memo(function LoadChart({
+  samples,
+  startMinutes = 0,
+  height = 160,
+}: LoadChartProps) {
   const { t } = useI18n();
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
 
-  const hasGpu = samples.some((sample) => typeof sample.gpuLoad === 'number');
-  const hasCpu = samples.some((sample) => typeof sample.cpuLoad === 'number');
+  // Null-safe: only points with a load reach the chart.
+  const gpuPoints = useMemo(() => filterSamples(samples, 'gpuLoad'), [samples]);
+  const cpuPoints = useMemo(() => filterSamples(samples, 'cpuLoad'), [samples]);
+  const hasGpu = gpuPoints.length > 0;
+  const hasCpu = cpuPoints.length > 0;
 
   const gpuData = useMemo(
-    () => samples.map((sample) => ({ value: sample.gpuLoad as number | undefined })),
-    [samples],
+    () => gpuPoints.map((point) => ({ value: point.gpuLoad ?? undefined })),
+    [gpuPoints],
   );
   const cpuData = useMemo(
-    () => samples.map((sample) => ({ value: sample.cpuLoad as number | undefined })),
-    [samples],
+    () => cpuPoints.map((point) => ({ value: point.cpuLoad ?? undefined })),
+    [cpuPoints],
   );
+  const chartPoints = hasGpu ? gpuPoints : cpuPoints;
 
   if (!hasGpu && !hasCpu) return null;
 
-  const chartWidth = Math.max(180, windowWidth - 104);
+  const chartWidth = Math.max(140, Math.min(windowWidth - 104, windowWidth - 40));
 
   const clockAt = (sample: FpsSample | undefined): string =>
     sample ? toClock(startMinutes + sample.offsetSeconds / 60) : '';
@@ -125,7 +134,7 @@ export function LoadChart({ samples, startMinutes = 0, height = 160 }: LoadChart
             pointerLabelHeight: 46,
             autoAdjustPointerLabelPosition: true,
             pointerLabelComponent: (_items: { value?: number }[], _secondary: unknown, index: number) => {
-              const sample = samples[index];
+              const sample = chartPoints[index];
               return (
                 <View className="items-center rounded-lg border border-tooltip-border bg-tooltip px-2.5 py-1.5">
                   <Text className="text-[9px] font-medium uppercase tracking-[1px] text-faint">
@@ -145,4 +154,4 @@ export function LoadChart({ samples, startMinutes = 0, height = 160 }: LoadChart
       </View>
     </View>
   );
-}
+});

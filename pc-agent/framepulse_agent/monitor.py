@@ -54,7 +54,7 @@ KNOWN_REFRESH_SECONDS = 600.0
 PENDING_REFRESH_SECONDS = 5.0
 
 # How often the "právě hraji" live status is refreshed during a session.
-LIVE_UPDATE_INTERVAL_SECONDS = 8.0
+LIVE_UPDATE_INTERVAL_SECONDS = 5.0
 
 Notifier = Callable[[str, str], None]
 
@@ -139,6 +139,10 @@ class GameAgent:
         self._paused = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
+
+        # Probe the sensor sources once at start (nvidia-smi path, Windows
+        # CPU-temperature sources) so later reads can skip unavailable tools.
+        sensors.probe_startup_sensors()
 
         self._active: _Active | None = None
         self._state = STATE_IDLE
