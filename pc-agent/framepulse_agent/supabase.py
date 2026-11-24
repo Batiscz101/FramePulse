@@ -1,4 +1,4 @@
-"""Minimal Supabase REST API client (PostgREST) without heavy dependencies."""
+"""Minimal PostgREST (Neon Data API) client without heavy dependencies."""
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ DEFAULT_TIMEOUT = 20.0
 DEFAULT_RETRIES = 3
 
 # ---------------------------------------------------------------------------
-# Schema columns (mirror of supabase/supabase_schema.sql). Payloads are
-# sanitized against these so a stray/invalid field only drops that field,
-# never the whole write.
+# Schema columns (mirror of neon/neon_schema.sql). Payloads are sanitized
+# against these so a stray/invalid field only drops that field, never the
+# whole write.
 # ---------------------------------------------------------------------------
 
 BOOLEAN_COLUMNS = frozenset({"is_playing"})
@@ -135,7 +135,7 @@ def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseEr
 
     if code in TABLE_MISSING_CODES or "schema cache" in lowered:
         return SupabaseError(
-            "The Supabase tables are not created. Run supabase_schema.sql in the SQL Editor.",
+            "The tables are not created. Run neon/neon_schema.sql in the SQL Editor.",
             status=status,
             code=code,
             details=details,
@@ -143,8 +143,8 @@ def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseEr
 
     if code in PERMISSION_CODES or "permission denied" in lowered:
         return SupabaseError(
-            "The database rejected the write – missing RLS policies or GRANTs. "
-            "Run supabase_schema.sql again.",
+            "The database rejected the write – missing grants. "
+            "Run neon/neon_schema.sql again.",
             status=status,
             code=code,
             details=details,
@@ -152,14 +152,15 @@ def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseEr
 
     if status in (401, 403):
         return SupabaseError(
-            "Supabase rejected the publishable key. Check supabase_key in config.json.",
+            "The data endpoint rejected the request – check the neon_url and "
+            "neon_api_key in config.json.",
             status=status,
             code=code,
             details=details,
         )
 
     return SupabaseError(
-        message or f"Supabase returned HTTP {status}.",
+        message or f"The data endpoint returned HTTP {status}.",
         status=status,
         code=code,
         details=details,
@@ -167,30 +168,38 @@ def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseEr
 
 
 class SupabaseClient:
-    """Thin wrapper over PostgREST endpoints for tables games/sessions/fps_samples/live_status."""
+    """Thin wrapper over the Neon Data API (PostgREST) endpoints
+    for tables games/sessions/fps_samples/live_status."""
 
     def __init__(
         self,
         url: str,
-        key: str,
+        key: str = "",
         *,
         timeout: float = DEFAULT_TIMEOUT,
         retries: int = DEFAULT_RETRIES,
         session: requests.Session | None = None,
     ) -> None:
-        self._base = url.rstrip("/") + "/rest/v1"
-        self._key = key
+        base = url.rstrip("/")
+        # The Neon Data API URL already ends with /rest/v1; append it only
+        # when it is missing (a bare project base used to be appended before).
+        if not base.endswith("/rest/v1"):
+            base += "/rest/v1"
+        self._base = base
+        self._key = (key or "").strip()
         self._timeout = timeout
         self._retries = max(1, retries)
         self._session = session or requests.Session()
-        self._session.headers.update(
-            {
-                "apikey": key,
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        # The Data API serves the anonymous role without a key; the auth
+        # headers are sent only when a key is configured.
+        if self._key:
+            headers["apikey"] = self._key
+            headers["Authorization"] = f"Bearer {self._key}"
+        self._session.headers.update(headers)
 
     def close(self) -> None:
         try:
@@ -354,7 +363,7 @@ class SupabaseClient:
                     timeout=self._timeout,
                 )
             except requests.RequestException as exc:
-                last_error = SupabaseError(f"Could not connect to Supabase: {exc}")
+                last_error = SupabaseError(f"Could not connect to the data endpoint: {exc}")
                 if attempt < self._retries:
                     self._backoff(attempt)
                     continue
@@ -378,7 +387,7 @@ class SupabaseClient:
             # Transient server errors are retried.
             if response.status_code >= 500 and attempt < self._retries:
                 LOG.warning(
-                    "Supabase HTTP %s (%s), attempt %s/%s",
+                    "The data endpoint returned HTTP %s (%s), attempt %s/%s",
                     response.status_code,
                     error,
                     attempt,

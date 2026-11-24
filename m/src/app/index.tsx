@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Plus, Search, X } from 'lucide-react-native';
+import { Plus, Search, Settings2, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GameCard } from '@/components/game-card';
@@ -147,6 +147,16 @@ export default function GamesScreen() {
               </View>
 
               <View className="mt-1 flex-row items-center gap-2">
+                <Pressable
+                  onPress={() => router.push({ pathname: '/connection' })}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('connectionTitle')}
+                  className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-surface"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                  <Settings2 size={15} color={colors.muted} strokeWidth={2} />
+                </Pressable>
                 <LanguageToggle />
                 <ThemeToggle />
 

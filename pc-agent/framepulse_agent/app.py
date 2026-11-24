@@ -180,8 +180,8 @@ def main(argv: list[str] | None = None) -> int:
     LOG.info("PresentMon: %s", config.presentmon_path)
 
     client = SupabaseClient(
-        config.supabase_url,
-        config.supabase_key,
+        config.neon_url,
+        config.neon_api_key,
         timeout=config.request_timeout,
     )
     uploader = Uploader(client, config.outbox_dir, config.upload_chunk_size)

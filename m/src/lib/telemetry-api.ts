@@ -1,13 +1,18 @@
 import { DEFAULT_LANGUAGE, translate, type Language } from '@/lib/i18n';
-import { supabase } from '@/lib/supabase';
+import {
+  fetchGame as fetchGameRow,
+  fetchSessionSamples as fetchSampleRows,
+  insertGame,
+  listGames,
+  updateGame,
+  updateSessionNote as updateSessionNoteRow,
+} from '@/lib/supabase';
 import {
   downsampleSamples,
   mapGame,
   mapSample,
   type FpsSample,
   type Game,
-  type GameRow,
-  type SampleRow,
 } from '@/types/telemetry';
 
 /** Columns needed by the list and the detail screen (samples are loaded lazily). */
@@ -16,11 +21,6 @@ const GAME_SELECT =
 
 /** PresentMon sessions can have thousands of samples; the chart never needs more. */
 const MAX_CHART_POINTS = 75;
-
-/** PostgREST returns at most 1 000 rows per request unless configured higher. */
-const SAMPLE_PAGE_SIZE = 1000;
-
-const SAMPLE_PAGE_LIMIT = 50;
 
 export function describeError(error: unknown, language: Language = DEFAULT_LANGUAGE): string {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -64,25 +64,14 @@ function sortByRecent(games: Game[]): Game[] {
 
 /** All games with their sessions, newest activity first. */
 export async function fetchGames(): Promise<Game[]> {
-  const { data, error } = await supabase.from('games').select(GAME_SELECT);
-
-  if (error) throw error;
-
-  return sortByRecent(((data ?? []) as GameRow[]).map(mapGame));
+  const rows = await listGames(GAME_SELECT);
+  return sortByRecent(rows.map(mapGame));
 }
 
 /** A single game with its sessions, or `null` when it no longer exists. */
 export async function fetchGame(gameId: string): Promise<Game | null> {
-  const { data, error } = await supabase
-    .from('games')
-    .select(GAME_SELECT)
-    .eq('id', gameId)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) return null;
-
-  return mapGame(data as GameRow);
+  const row = await fetchGameRow(gameId, GAME_SELECT);
+  return row ? mapGame(row) : null;
 }
 
 export type CreateGameInput = {
@@ -94,64 +83,28 @@ export async function createGame({ name, processName }: CreateGameInput): Promis
   const trimmedName = name.trim();
   const trimmedProcess = processName?.trim() ?? '';
 
-  const { data, error } = await supabase
-    .from('games')
-    .insert({
-      name: trimmedName,
-      process_name: trimmedProcess.length > 0 ? trimmedProcess : null,
-    })
-    .select('id, name, process_name, created_at')
-    .single();
+  const row = await insertGame(
+    { name: trimmedName, process_name: trimmedProcess.length > 0 ? trimmedProcess : null },
+    'id, name, process_name, created_at',
+  );
 
-  if (error) throw error;
-
-  return mapGame(data as GameRow);
+  return mapGame(row);
 }
 
 export async function renameGame(gameId: string, name: string): Promise<void> {
-  const { error } = await supabase
-    .from('games')
-    .update({ name: name.trim() })
-    .eq('id', gameId);
-
-  if (error) throw error;
+  await updateGame(gameId, name.trim());
 }
 
 /** Saves a user-written note on a session (null clears it). */
 export async function updateSessionNote(sessionId: string, note: string | null): Promise<void> {
-  const { error } = await supabase
-    .from('sessions')
-    .update({ note: note && note.length > 0 ? note : null })
-    .eq('id', sessionId);
-
-  if (error) throw error;
+  await updateSessionNoteRow(sessionId, note);
 }
 
 /**
- * Loads every FPS sample of a session (paged) and reduces them down to a
+ * Loads every FPS sample of a session and reduces them down to a
  * chart-friendly number of points (minimum FPS per bucket when downsampled).
  */
 export async function fetchSessionSamples(sessionId: string): Promise<FpsSample[]> {
-  const rows: SampleRow[] = [];
-  let from = 0;
-
-  for (let page = 0; page < SAMPLE_PAGE_LIMIT; page += 1) {
-    const { data, error } = await supabase
-      .from('fps_samples')
-      .select('timestamp_offset, fps, gpu_temp, cpu_temp, gpu_load, cpu_load')
-      .eq('session_id', sessionId)
-      .order('timestamp_offset', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + SAMPLE_PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    const batch = (data ?? []) as SampleRow[];
-    rows.push(...batch);
-
-    if (batch.length < SAMPLE_PAGE_SIZE) break;
-    from += SAMPLE_PAGE_SIZE;
-  }
-
+  const rows = await fetchSampleRows(sessionId);
   return downsampleSamples(rows.map(mapSample), MAX_CHART_POINTS);
 }

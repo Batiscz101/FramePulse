@@ -28,6 +28,17 @@ const en = {
   offlineSynced: 'synced {time}',
   offlineHint: 'Showing data saved on this device.',
 
+  /* Connection (Neon Data API) */
+  connectionTitle: 'Connection',
+  connectionUrlLabel: 'Neon Data API URL',
+  connectionUrlPlaceholder:
+    'https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1',
+  connectionApiKeyLabel: 'Neon API key (optional)',
+  connectionApiKeyPlaceholder: 'Enter a key or leave it empty',
+  connectionHint: 'Without a key the public Data API endpoint is used.',
+  connectionSave: 'Save',
+  connectionSaveFailed: 'The settings could not be saved',
+
   /* Game list */
   gamesTitle: 'Your games',
   pcTelemetry: 'PC telemetry',
@@ -75,7 +86,7 @@ const en = {
 
   /* Game form */
   addGameHint: 'The name appears in the app; the process lets the pc-agent recognize the game.',
-  renameGameHint: 'The change is saved to Supabase and appears on your other devices.',
+  renameGameHint: 'The change is saved to the database and appears on your other devices.',
   gameName: 'Game name',
   gameNamePlaceholder: 'e.g. Cyberpunk 2077',
   processOptional: 'Process (optional)',
@@ -132,9 +143,9 @@ const en = {
   compareSettings: 'Settings',
 
   /* Errors */
-  errorSchemaMissing: 'Supabase tables are missing. Run supabase_schema.sql in the SQL Editor.',
+  errorSchemaMissing: 'The tables are missing. Run neon/neon_schema.sql in the SQL Editor.',
   errorPermission:
-    'The database rejected the request. Check RLS policies and grants in supabase_schema.sql.',
+    'The database rejected the request. Check grants in neon/neon_schema.sql.',
   errorDuplicate: 'A game with this process name already exists.',
   errorGeneric: 'Something went wrong. Please try again.',
 } as const;
@@ -158,6 +169,17 @@ const cs: Record<TranslationKey, string> = {
   offlineBadge: 'Offline data',
   offlineSynced: 'staženo {time}',
   offlineHint: 'Zobrazují se data uložená v tomto zařízení.',
+
+  /* Connection (Neon Data API) */
+  connectionTitle: 'Připojení',
+  connectionUrlLabel: 'Neon Data API URL',
+  connectionUrlPlaceholder:
+    'https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1',
+  connectionApiKeyLabel: 'Neon API klíč (volitelný)',
+  connectionApiKeyPlaceholder: 'Zadejte klíč nebo ponechte prázdné',
+  connectionHint: 'Bez klíče se použije veřejný koncový bod Data API.',
+  connectionSave: 'Uložit',
+  connectionSaveFailed: 'Nastavení se nepodařilo uložit',
 
   gamesTitle: 'Vaše hry',
   pcTelemetry: 'telemetrie z PC',
@@ -202,7 +224,7 @@ const cs: Record<TranslationKey, string> = {
   lowFpsRef: '1% Lows',
 
   addGameHint: 'Název se zobrazí v aplikaci, proces slouží pc-agentovi k rozpoznání hry.',
-  renameGameHint: 'Změna se uloží do Supabase a projeví se i na ostatních zařízeních.',
+  renameGameHint: 'Změna se uloží do databáze a projeví se i na ostatních zařízeních.',
   gameName: 'Název hry',
   gameNamePlaceholder: 'Např. Cyberpunk 2077',
   processOptional: 'Proces (nepovinné)',
@@ -258,9 +280,9 @@ const cs: Record<TranslationKey, string> = {
   compareCpuLoad: 'Vytížení CPU',
   compareSettings: 'Nastavení',
 
-  errorSchemaMissing: 'Tabulky v Supabase nejsou vytvořené. Spusťte supabase_schema.sql v SQL Editoru.',
+  errorSchemaMissing: 'Tabulky nejsou vytvořené. Spusťte neon/neon_schema.sql v SQL Editoru.',
   errorPermission:
-    'Databáze odmítla požadavek. Zkontrolujte RLS politiky a grants v supabase_schema.sql.',
+    'Databáze odmítla požadavek. Zkontrolujte oprávnění v neon/neon_schema.sql.',
   errorDuplicate: 'Hra s tímto názvem procesu už existuje.',
   errorGeneric: 'Něco se pokazilo. Zkuste to prosím znovu.',
 };

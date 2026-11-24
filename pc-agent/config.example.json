@@ -1,6 +1,6 @@
 {
-  "supabase_url": "https://your-project.supabase.co",
-  "supabase_key": "your-anon-key",
+  "neon_url": "https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1",
+  "neon_api_key": "",
   "presentmon_path": "tools/PresentMon.exe",
   "poll_interval_seconds": 2.0,
   "sample_interval_seconds": 2.0,

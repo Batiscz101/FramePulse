@@ -9,20 +9,20 @@ from framepulse_agent.supabase import SupabaseClient, SupabaseError, describe_re
 class DescribeResponseTests(unittest.TestCase):
     def test_missing_tables(self) -> None:
         error = describe_response(404, {"code": "PGRST205", "message": "not found"})
-        self.assertIn("The Supabase tables are not created", str(error))
+        self.assertIn("The tables are not created", str(error))
         self.assertEqual(error.code, "PGRST205")
 
     def test_missing_tables_by_message(self) -> None:
         error = describe_response(404, {"message": "Could not find table in schema cache"})
-        self.assertIn("supabase_schema.sql", str(error))
+        self.assertIn("neon_schema.sql", str(error))
 
     def test_permission_denied(self) -> None:
         error = describe_response(403, {"code": "42501", "message": "permission denied for table games"})
-        self.assertIn("RLS", str(error))
+        self.assertIn("missing grants", str(error))
 
     def test_bad_key(self) -> None:
         error = describe_response(401, {"message": "Invalid API key"})
-        self.assertIn("publishable", str(error))
+        self.assertIn("neon_api_key", str(error))
 
     def test_generic_error(self) -> None:
         error = describe_response(500, {"message": "boom", "details": "detail"})
@@ -187,6 +187,25 @@ class SupabaseClientTests(unittest.TestCase):
             client.list_games()
 
         self.assertEqual(len(session.calls), 1)
+
+    def test_no_api_key_omits_auth_headers(self) -> None:
+        session = FakeSession([FakeResponse(200, b"[]")])
+        client = SupabaseClient("https://example.supabase.co", session=session)
+
+        games = client.list_games()
+
+        self.assertEqual(games, [])
+        self.assertNotIn("apikey", session.headers)
+        self.assertNotIn("Authorization", session.headers)
+
+    def test_neon_url_keeps_rest_v1_suffix(self) -> None:
+        session = FakeSession([FakeResponse(200, b"[]")])
+        url = "https://ep-example.apirest.eu-central-1.aws.neon.tech/neondb/rest/v1"
+        client = SupabaseClient(url, session=session)
+
+        client.list_games()
+
+        self.assertEqual(session.calls[0]["url"], f"{url}/games")
 
 
 if __name__ == "__main__":

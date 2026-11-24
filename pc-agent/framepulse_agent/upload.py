@@ -1,4 +1,4 @@
-"""Assembling the session record and sending it to Supabase (with an offline queue)."""
+"""Assembling the session record and sending it to the data endpoint (with an offline queue)."""
 
 from __future__ import annotations
 

@@ -33,10 +33,11 @@ CONFIG_FILE = BASE_DIR / "config.json"
 APP_DATA_FOLDER = "FramePulseAgent"
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    # Supabase connection – the publishable (anon) key is public; data is protected by RLS.
-    # Replace the sample values with data from your project (Project Settings → API).
-    "supabase_url": "https://your-project.supabase.co",
-    "supabase_key": "your-anon-key",
+    # Neon Data API (PostgREST) connection. The API key is optional – without it
+    # the endpoint serves the `anonymous` role. Replace the sample URL with the
+    # address of your Neon project (Project Settings → API).
+    "neon_url": "https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1",
+    "neon_api_key": "",
     # Path to PresentMon (relative to the pc-agent folder).
     "presentmon_path": "tools/PresentMon.exe",
     # How often visible games are checked (seconds).
@@ -225,8 +226,8 @@ def _resolve_presentmon_frozen(data_dir: Path) -> Path:
 
 @dataclass(frozen=True)
 class Config:
-    supabase_url: str
-    supabase_key: str
+    neon_url: str
+    neon_api_key: str
     presentmon_path: Path
     data_dir: Path
     poll_interval: float
@@ -322,28 +323,19 @@ def load_config(path: Path | None = None) -> Config:
 
     merged: dict[str, Any] = {**DEFAULT_CONFIG, **raw}
 
-    url = str(merged.get("supabase_url") or "").strip().rstrip("/")
-    key = str(merged.get("supabase_key") or "").strip()
+    # Neon Data API URL, with backward compatibility for the old Supabase keys.
+    url = str(merged.get("neon_url") or merged.get("supabase_url") or "").strip().rstrip("/")
+    key_raw = merged.get("neon_api_key")
+    if key_raw is None:
+        key_raw = merged.get("supabase_key")
+    key = str(key_raw or "").strip()
     warnings: list[str] = []
 
     if not url.startswith(("https://", "http://")):
         raise ConfigError(
-            "config.json is missing a valid 'supabase_url' "
-            "(expected e.g. https://<project>.supabase.co)."
+            "config.json is missing a valid 'neon_url' "
+            "(expected the Neon Data API URL, e.g. https://ep-....apirest....neon.tech/neondb/rest/v1)."
         )
-    if not key:
-        raise ConfigError("config.json is missing 'supabase_key' (publishable/anon key).")
-
-    host = url.split("://", 1)[-1].split("/", 1)[0].lower()
-    if host in {"supabase.co", "www.supabase.co", "app.supabase.co"}:
-        warnings.append(
-            "supabase_url points to the generic Supabase web, not to a project. "
-            "Use the address https://<project-ref>.supabase.co."
-        )
-    if key.startswith("eyJ") and len(key) > 200:
-        LOG.info("Using the older anon (JWT) key.")
-    elif not key.startswith("sb_publishable_"):
-        warnings.append("supabase_key does not look like a publishable key (sb_publishable_…).")
 
     data_dir_raw = str(merged.get("data_dir") or "").strip()
     data_dir = Path(data_dir_raw) if data_dir_raw else default_data_dir()
@@ -358,8 +350,8 @@ def load_config(path: Path | None = None) -> Config:
 
     chunk = int(max(1.0, _number(merged, "upload_chunk_size", 500, 1)))
     config = Config(
-        supabase_url=url,
-        supabase_key=key,
+        neon_url=url,
+        neon_api_key=key,
         presentmon_path=presentmon,
         data_dir=data_dir,
         poll_interval=_number(merged, "poll_interval_seconds", 2.0, 0.5),

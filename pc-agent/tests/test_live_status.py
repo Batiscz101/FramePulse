@@ -88,8 +88,8 @@ class FakeUploader:
 
 def make_config() -> Config:
     return Config(
-        supabase_url="https://example.supabase.co",
-        supabase_key="key",
+        neon_url="https://example.supabase.co",
+        neon_api_key="key",
         presentmon_path=Path("tools/PresentMon.exe"),
         data_dir=Path("C:/framepulse-test"),
         poll_interval=2.0,

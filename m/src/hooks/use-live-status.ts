@@ -2,24 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
-import { supabase } from '@/lib/supabase';
-
-/** Row of the `live_status` table as written by the PC agent (v1.2.0). */
-export type LiveStatusRow = {
-  id: string;
-  is_playing: boolean;
-  game_name: string | null;
-  process_name: string | null;
-  started_at: string | null;
-  current_fps: number | string | null;
-  resolution: string | null;
-  graphics_api: string | null;
-  gpu_temp: number | string | null;
-  cpu_temp: number | string | null;
-  gpu_load?: number | string | null;
-  cpu_load?: number | string | null;
-  updated_at: string | null;
-};
+import { fetchLiveStatus, type LiveStatusRow } from '@/lib/supabase';
 
 /** What the UI consumes – every null field means "not available". */
 export type LiveStatus = {
@@ -115,14 +98,10 @@ export function useLiveStatus(): LiveStatus {
 
   const refresh = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from('live_status')
-        .select('*')
-        .eq('id', 'default')
-        .maybeSingle();
+      const row = await fetchLiveStatus();
 
       if (!mounted.current) return;
-      const next = toLiveStatus(data as LiveStatusRow | null);
+      const next = toLiveStatus(row);
       // Keep the same object identity when nothing changed to avoid rerenders.
       setStatus((current) => (current === next ? current : next));
     } catch {
