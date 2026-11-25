@@ -3,6 +3,7 @@ import {
   fetchGame as fetchGameRow,
   fetchSessionSamples as fetchSampleRows,
   insertGame,
+  isNeonAuthRequiredError,
   listGames,
   updateGame,
   updateSessionNote as updateSessionNoteRow,
@@ -28,6 +29,10 @@ export function describeError(error: unknown, language: Language = DEFAULT_LANGU
     typeof error === 'object' && error !== null && 'code' in error
       ? String((error as { code?: unknown }).code)
       : '';
+
+  if (isNeonAuthRequiredError(error)) {
+    return translate(language, 'errorNeonAuth');
+  }
 
   if (code === '42P01' || code === 'PGRST205' || /schema cache/i.test(message)) {
     return translate(language, 'errorSchemaMissing');

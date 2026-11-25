@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import json as _json
 import logging
 import math
+import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections.abc import Mapping
 from typing import Any
 
@@ -15,12 +21,101 @@ LOG = logging.getLogger(__name__)
 TABLE_MISSING_CODES = frozenset({"42P01", "PGRST205"})
 PERMISSION_CODES = frozenset({"42501"})
 DUPLICATE_CODE = "23505"
+JWT_REQUIRED_CODE = "PGRST302"
 
 # The live_status table has a single row; this is its fixed id.
 LIVE_STATUS_ID = "default"
 
 DEFAULT_TIMEOUT = 20.0
 DEFAULT_RETRIES = 3
+DEFAULT_ANONYMOUS_TOKEN_TTL_SECONDS = 600.0
+AUTH_TOKEN_REFRESH_MARGIN_SECONDS = 30.0
+
+
+def is_jwt_token(value: str) -> bool:
+    """True when `value` looks like a static JWT bearer token (`eyJ...`)."""
+    return (value or "").strip().startswith("eyJ")
+
+
+def derive_neon_auth_url(data_api_url: str, explicit_auth_url: str = "") -> str:
+    """Derives the Neon Auth base URL from a Neon Data API URL, unless overridden.
+
+    Replaces `.apirest.` with `.neonauth.` in the host and `/rest/v1` with `/auth`
+    in the path. Returns `""` when no explicit URL is set and the Data API URL
+    is not a Neon `.apirest.` endpoint.
+    """
+    explicit = (explicit_auth_url or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+
+    raw = (data_api_url or "").strip().rstrip("/")
+    if not raw:
+        return ""
+
+    parts = urllib.parse.urlsplit(raw)
+    if ".apirest." not in parts.netloc:
+        return ""
+
+    netloc = parts.netloc.replace(".apirest.", ".neonauth.", 1)
+    path = parts.path.rstrip("/")
+    if path.endswith("/rest/v1"):
+        path = f"{path[:-len('/rest/v1')]}/auth"
+    elif not path.endswith("/auth"):
+        path = f"{path}/auth" if path else "/auth"
+
+    return urllib.parse.urlunsplit((parts.scheme, netloc, path, "", "")).rstrip("/")
+
+
+def extract_jwt_from_response(
+    body: bytes | str | None, headers: Mapping[str, str] | None = None
+) -> str | None:
+    """Extracts a JWT token from Neon Auth JSON body or `set-auth-jwt` header."""
+    if body:
+        text = body.decode("utf-8", errors="replace") if isinstance(body, (bytes, bytearray)) else str(body)
+        try:
+            payload = _json.loads(text)
+        except ValueError:
+            payload = None
+        if isinstance(payload, Mapping):
+            for candidate in (
+                payload.get("token"),
+                payload.get("access_token"),
+                payload.get("data", {}).get("token")
+                if isinstance(payload.get("data"), Mapping)
+                else None,
+                payload.get("data", {}).get("access_token")
+                if isinstance(payload.get("data"), Mapping)
+                else None,
+            ):
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+
+    if headers:
+        for key, value in headers.items():
+            if str(key).lower() == "set-auth-jwt" and isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return None
+
+
+def _jwt_expiry_ttl(
+    token: str, default_ttl: float = DEFAULT_ANONYMOUS_TOKEN_TTL_SECONDS
+) -> float:
+    """Computes effective cache TTL (seconds) using the JWT `exp` claim when present."""
+    parts = token.split(".")
+    if len(parts) >= 2:
+        segment = parts[1]
+        padded = segment + "=" * (-len(segment) % 4)
+        try:
+            claims = _json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+            exp = claims.get("exp") if isinstance(claims, Mapping) else None
+            if isinstance(exp, (int, float)) and not isinstance(exp, bool) and math.isfinite(exp):
+                remaining = float(exp) - time.time() - AUTH_TOKEN_REFRESH_MARGIN_SECONDS
+                if remaining > 0:
+                    return min(default_ttl, remaining)
+        except Exception:
+            pass
+    return default_ttl
 
 # ---------------------------------------------------------------------------
 # Schema columns (mirror of neon/neon_schema.sql). Payloads are sanitized
@@ -150,6 +245,19 @@ def describe_response(status: int, payload: dict[str, Any] | None) -> SupabaseEr
             details=details,
         )
 
+    if status == 401 and (
+        code == JWT_REQUIRED_CODE
+        or "pgrst302" in lowered
+        or "bearer token in jwt format" in lowered
+    ):
+        return SupabaseError(
+            "The data endpoint requires a JWT token (PGRST302) – enable Neon Auth "
+            "in the Neon Console or check neon_url / neon_auth_url / neon_api_key in config.json.",
+            status=status,
+            code=code,
+            details=details,
+        )
+
     if status in (401, 403):
         return SupabaseError(
             "The data endpoint rejected the request – check the neon_url and "
@@ -176,8 +284,10 @@ class SupabaseClient:
         url: str,
         key: str = "",
         *,
+        auth_url: str = "",
         timeout: float = DEFAULT_TIMEOUT,
         retries: int = DEFAULT_RETRIES,
+        token_ttl: float = DEFAULT_ANONYMOUS_TOKEN_TTL_SECONDS,
         session: requests.Session | None = None,
     ) -> None:
         base = url.rstrip("/")
@@ -187,16 +297,23 @@ class SupabaseClient:
             base += "/rest/v1"
         self._base = base
         self._key = (key or "").strip()
+        self._static_jwt = is_jwt_token(self._key)
+        self._auth_url = "" if self._static_jwt else derive_neon_auth_url(base, auth_url)
         self._timeout = timeout
         self._retries = max(1, retries)
+        self._token_ttl = max(1.0, float(token_ttl))
+        self._auth_lock = threading.Lock()
+        self._anon_token: str | None = None
+        self._anon_token_expires_at: float = 0.0
         self._session = session or requests.Session()
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        # The Data API serves the anonymous role without a key; the auth
-        # headers are sent only when a key is configured.
-        if self._key:
+        # Static JWT keys (eyJ...) and non-Neon keys are sent directly on the
+        # session; otherwise dynamic Neon Auth anonymous JWTs are fetched per
+        # demand and cached in memory.
+        if self._key and (self._static_jwt or not self._auth_url):
             headers["apikey"] = self._key
             headers["Authorization"] = f"Bearer {self._key}"
         self._session.headers.update(headers)
@@ -336,7 +453,53 @@ class SupabaseClient:
         sanitized = [sanitize_row(FPS_SAMPLES_COLUMNS, row) for row in rows]
         self._request("POST", "/fps_samples", json=sanitized)
 
-    # -- HTTP ----------------------------------------------------------------
+    # -- HTTP & Neon Auth ----------------------------------------------------
+
+    def _fetch_anonymous_jwt(self) -> str | None:
+        if not self._auth_url:
+            return None
+        token_url = f"{self._auth_url}/token/anonymous"
+        req = urllib.request.Request(
+            token_url,
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "FramePulseAgent/1.2.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as response:
+                body = response.read()
+                token = extract_jwt_from_response(body, response.headers)
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            LOG.warning("Could not fetch Neon anonymous JWT from %s: %s", token_url, exc)
+            return None
+
+        if not token:
+            LOG.warning("Neon Auth endpoint %s did not return a JWT token.", token_url)
+            return None
+        return token
+
+    def _get_auth_token(self, *, force_refresh: bool = False) -> str | None:
+        if self._static_jwt:
+            return self._key
+        if not self._auth_url:
+            return None
+
+        with self._auth_lock:
+            now = time.monotonic()
+            if not force_refresh and self._anon_token and now < self._anon_token_expires_at:
+                return self._anon_token
+            if force_refresh:
+                self._anon_token = None
+                self._anon_token_expires_at = 0.0
+
+            token = self._fetch_anonymous_jwt()
+            if token:
+                ttl = _jwt_expiry_ttl(token, self._token_ttl)
+                self._anon_token = token
+                self._anon_token_expires_at = time.monotonic() + ttl
+            return token
 
     def _request(
         self,
@@ -348,11 +511,18 @@ class SupabaseClient:
         prefer: str | None = None,
     ) -> Any:
         url = f"{self._base}{path}"
-        headers = {"Prefer": prefer} if prefer else {}
-
+        uses_dynamic_auth = bool(self._auth_url) and not self._static_jwt
+        auth_retried = False
         last_error: SupabaseError | None = None
+        attempt = 1
 
-        for attempt in range(1, self._retries + 1):
+        while attempt <= self._retries:
+            headers: dict[str, str] = {"Prefer": prefer} if prefer else {}
+            if uses_dynamic_auth:
+                token = self._get_auth_token()
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+
             try:
                 response = self._session.request(
                     method,
@@ -366,6 +536,7 @@ class SupabaseClient:
                 last_error = SupabaseError(f"Could not connect to the data endpoint: {exc}")
                 if attempt < self._retries:
                     self._backoff(attempt)
+                    attempt += 1
                     continue
                 raise last_error from exc
 
@@ -382,6 +553,17 @@ class SupabaseClient:
             except ValueError:
                 payload = {"message": response.text[:300]}
 
+            payload_code = str(payload.get("code") or "") if isinstance(payload, dict) else ""
+            if (
+                uses_dynamic_auth
+                and not auth_retried
+                and (response.status_code == 401 or payload_code == JWT_REQUIRED_CODE)
+            ):
+                auth_retried = True
+                LOG.debug("Neon Data API returned %s (%s); refreshing anonymous JWT.", response.status_code, payload_code)
+                if self._get_auth_token(force_refresh=True):
+                    continue
+
             error = describe_response(response.status_code, payload)
 
             # Transient server errors are retried.
@@ -395,6 +577,7 @@ class SupabaseClient:
                 )
                 last_error = error
                 self._backoff(attempt)
+                attempt += 1
                 continue
 
             raise error

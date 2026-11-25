@@ -1,6 +1,7 @@
 {
   "neon_url": "https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1",
   "neon_api_key": "",
+  "neon_auth_url": "",
   "presentmon_path": "tools/PresentMon.exe",
   "poll_interval_seconds": 2.0,
   "sample_interval_seconds": 2.0,

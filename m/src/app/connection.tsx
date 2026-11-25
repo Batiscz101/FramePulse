@@ -1,36 +1,50 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 
 import { useI18n } from '@/lib/i18n-context';
 import {
+  NEON_AUTH_URL,
   NEON_DATA_API_URL,
+  deriveNeonAuthUrl,
+  isNeonAuthRequiredError,
   readConnectionSettings,
   saveConnectionSettings,
+  testConnection,
 } from '@/lib/supabase';
+import { describeError } from '@/lib/telemetry-api';
 import { useTheme } from '@/lib/theme-context';
 
+type ConnectionFailure = { kind: 'save' } | { kind: 'api'; error: unknown };
+
 /**
- * Connection settings for the PostgREST (Neon Data API) endpoint. The API key
- * is optional – the public endpoint serves the `anonymous` role.
+ * Connection settings for the PostgREST (Neon Data API) endpoint. Without a
+ * static JWT key, an anonymous JWT is fetched from Neon Auth automatically.
  */
 export default function ConnectionScreen() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const { colors } = useTheme();
   const [url, setUrl] = useState(NEON_DATA_API_URL);
+  const [authUrl, setAuthUrl] = useState(NEON_AUTH_URL);
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<ConnectionFailure | null>(null);
 
   useEffect(() => {
     let active = true;
     readConnectionSettings()
-      .then(({ url: savedUrl, apiKey: savedKey }) => {
+      .then(({ url: savedUrl, apiKey: savedKey, authUrl: savedAuthUrl }) => {
         if (!active) return;
         setUrl(savedUrl);
         setApiKey(savedKey);
+        setAuthUrl(savedAuthUrl ?? '');
+        return testConnection().catch((caught) => {
+          if (active && isNeonAuthRequiredError(caught)) {
+            setFailure({ kind: 'api', error: caught });
+          }
+        });
       })
       .catch(() => {
         // Keep the defaults when the saved settings cannot be read.
@@ -42,15 +56,34 @@ export default function ConnectionScreen() {
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
+    setFailure(null);
     try {
-      await saveConnectionSettings({ url: url.trim(), apiKey: apiKey.trim() });
-      router.back();
+      await saveConnectionSettings({
+        url: url.trim(),
+        apiKey: apiKey.trim(),
+        authUrl: authUrl.trim(),
+      });
     } catch {
       setSaving(false);
-      setError(t('connectionSaveFailed'));
+      setFailure({ kind: 'save' });
+      return;
+    }
+
+    try {
+      await testConnection();
+      router.back();
+    } catch (caught) {
+      setSaving(false);
+      setFailure({ kind: 'api', error: caught });
     }
   };
+
+  const errorMessage = failure
+    ? failure.kind === 'save'
+      ? t('connectionSaveFailed')
+      : describeError(failure.error, language)
+    : null;
+  const derivedAuthPlaceholder = deriveNeonAuthUrl(url) || t('connectionAuthUrlPlaceholder');
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-canvas">
@@ -92,6 +125,24 @@ export default function ConnectionScreen() {
 
         <View className="mt-3 rounded-2xl border border-hairline bg-surface p-4">
           <Text className="text-[10px] font-medium uppercase tracking-[1.2px] text-faint">
+            {t('connectionAuthUrlLabel')}
+          </Text>
+          <TextInput
+            value={authUrl}
+            onChangeText={setAuthUrl}
+            placeholder={derivedAuthPlaceholder}
+            placeholderTextColor={colors.faint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="done"
+            accessibilityLabel={t('connectionAuthUrlLabel')}
+            className="mt-1.5 text-[14px] text-ink"
+          />
+        </View>
+
+        <View className="mt-3 rounded-2xl border border-hairline bg-surface p-4">
+          <Text className="text-[10px] font-medium uppercase tracking-[1.2px] text-faint">
             {t('connectionApiKeyLabel')}
           </Text>
           <TextInput
@@ -115,13 +166,18 @@ export default function ConnectionScreen() {
           disabled={saving}
           accessibilityRole="button"
           accessibilityLabel={t('connectionSave')}
-          className="mt-5 self-start rounded-full border border-hairline bg-raised px-4 py-2"
-          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+          className="mt-5 flex-row items-center gap-2 self-start rounded-full border border-hairline bg-raised px-4 py-2"
+          style={({ pressed }) => ({ opacity: pressed || saving ? 0.7 : 1 })}
         >
+          {saving ? <ActivityIndicator size="small" color={colors.ink} /> : null}
           <Text className="text-[12px] font-medium text-ink">{t('connectionSave')}</Text>
         </Pressable>
 
-        {error ? <Text className="mt-3 text-[12px] text-danger">{error}</Text> : null}
+        {errorMessage ? (
+          <View className="mt-3 rounded-2xl border border-danger/30 bg-surface p-3.5">
+            <Text className="text-[12px] leading-4 text-danger">{errorMessage}</Text>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

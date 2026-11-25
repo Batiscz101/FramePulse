@@ -33,9 +33,12 @@ const en = {
   connectionUrlLabel: 'Neon Data API URL',
   connectionUrlPlaceholder:
     'https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1',
-  connectionApiKeyLabel: 'Neon API key (optional)',
-  connectionApiKeyPlaceholder: 'Enter a key or leave it empty',
-  connectionHint: 'Without a key the public Data API endpoint is used.',
+  connectionAuthUrlLabel: 'Neon Auth URL (optional)',
+  connectionAuthUrlPlaceholder: 'Derived automatically from Data API URL',
+  connectionApiKeyLabel: 'Neon API key / JWT (optional)',
+  connectionApiKeyPlaceholder: 'Enter a JWT or leave it empty',
+  connectionHint:
+    'Without a JWT key, an anonymous JWT is fetched from Neon Auth automatically.',
   connectionSave: 'Save',
   connectionSaveFailed: 'The settings could not be saved',
 
@@ -146,6 +149,8 @@ const en = {
   errorSchemaMissing: 'The tables are missing. Run neon/neon_schema.sql in the SQL Editor.',
   errorPermission:
     'The database rejected the request. Check grants in neon/neon_schema.sql.',
+  errorNeonAuth:
+    'Authentication required (401/PGRST302). Enable Neon Auth in the Neon Console for anonymous JWT access, or enter a JWT token as the API key.',
   errorDuplicate: 'A game with this process name already exists.',
   errorGeneric: 'Something went wrong. Please try again.',
 } as const;
@@ -175,9 +180,12 @@ const cs: Record<TranslationKey, string> = {
   connectionUrlLabel: 'Neon Data API URL',
   connectionUrlPlaceholder:
     'https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1',
-  connectionApiKeyLabel: 'Neon API klíč (volitelný)',
-  connectionApiKeyPlaceholder: 'Zadejte klíč nebo ponechte prázdné',
-  connectionHint: 'Bez klíče se použije veřejný koncový bod Data API.',
+  connectionAuthUrlLabel: 'Neon Auth URL (volitelná)',
+  connectionAuthUrlPlaceholder: 'Odvodí se automaticky z Data API URL',
+  connectionApiKeyLabel: 'Neon API klíč / JWT (volitelný)',
+  connectionApiKeyPlaceholder: 'Zadejte JWT nebo ponechte prázdné',
+  connectionHint:
+    'Bez vlastního JWT klíče se anonymní JWT automaticky načte z Neon Auth.',
   connectionSave: 'Uložit',
   connectionSaveFailed: 'Nastavení se nepodařilo uložit',
 
@@ -283,6 +291,8 @@ const cs: Record<TranslationKey, string> = {
   errorSchemaMissing: 'Tabulky nejsou vytvořené. Spusťte neon/neon_schema.sql v SQL Editoru.',
   errorPermission:
     'Databáze odmítla požadavek. Zkontrolujte oprávnění v neon/neon_schema.sql.',
+  errorNeonAuth:
+    'Chyba ověření (401/PGRST302). Zapněte Neon Auth v Neon Console, aby bylo možné získat anonymní JWT token, nebo zadejte platný JWT klíč.',
   errorDuplicate: 'Hra s tímto názvem procesu už existuje.',
   errorGeneric: 'Něco se pokazilo. Zkuste to prosím znovu.',
 };

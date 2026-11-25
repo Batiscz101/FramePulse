@@ -182,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     client = SupabaseClient(
         config.neon_url,
         config.neon_api_key,
+        auth_url=config.neon_auth_url,
         timeout=config.request_timeout,
     )
     uploader = Uploader(client, config.outbox_dir, config.upload_chunk_size)

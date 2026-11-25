@@ -38,6 +38,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # address of your Neon project (Project Settings → API).
     "neon_url": "https://ep-dark-base-bhm8rvp5.apirest.c-10.eu-central-1.aws.neon.tech/neondb/rest/v1",
     "neon_api_key": "",
+    # Optional Neon Auth base URL; empty = derived automatically from neon_url.
+    "neon_auth_url": "",
     # Path to PresentMon (relative to the pc-agent folder).
     "presentmon_path": "tools/PresentMon.exe",
     # How often visible games are checked (seconds).
@@ -244,6 +246,7 @@ class Config:
     request_timeout: float
     ignore_processes: frozenset[str] = frozenset()
     force_games: frozenset[str] = frozenset()
+    neon_auth_url: str = ""
     debug: bool = False
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -329,12 +332,18 @@ def load_config(path: Path | None = None) -> Config:
     if key_raw is None:
         key_raw = merged.get("supabase_key")
     key = str(key_raw or "").strip()
+    auth_url = str(merged.get("neon_auth_url") or "").strip().rstrip("/")
     warnings: list[str] = []
 
     if not url.startswith(("https://", "http://")):
         raise ConfigError(
             "config.json is missing a valid 'neon_url' "
             "(expected the Neon Data API URL, e.g. https://ep-....apirest....neon.tech/neondb/rest/v1)."
+        )
+    if auth_url and not auth_url.startswith(("https://", "http://")):
+        raise ConfigError(
+            "config.json has an invalid 'neon_auth_url' "
+            "(expected an http:// or https:// URL, or empty to derive it from neon_url)."
         )
 
     data_dir_raw = str(merged.get("data_dir") or "").strip()
@@ -352,6 +361,7 @@ def load_config(path: Path | None = None) -> Config:
     config = Config(
         neon_url=url,
         neon_api_key=key,
+        neon_auth_url=auth_url,
         presentmon_path=presentmon,
         data_dir=data_dir,
         poll_interval=_number(merged, "poll_interval_seconds", 2.0, 0.5),
