@@ -34,9 +34,11 @@ create table if not exists public.sessions (
   display_mode text,
   graphics_api text,
   game_settings jsonb,
+  note text,
   gpu_temp_avg numeric(5, 2),
   gpu_temp_max numeric(5, 2),
   gpu_load_avg numeric(5, 2),
+  cpu_temp_max double precision,
   cpu_temp_avg numeric(5, 2),
   cpu_load_avg numeric(5, 2)
 );
@@ -48,11 +50,29 @@ comment on column public.sessions.resolution is 'Game window resolution, e.g. 25
 comment on column public.sessions.display_mode is 'Window mode: Fullscreen, Borderless or Windowed.';
 comment on column public.sessions.graphics_api is 'Graphics API: DX12, DX11, Vulkan or OpenGL.';
 comment on column public.sessions.game_settings is 'Key graphics settings read from the game config: quality, dlss, fsr, ray_tracing, vsync, fps_limit (JSON object).';
+comment on column public.sessions.note is 'Optional user note on the session.';
 comment on column public.sessions.gpu_temp_avg is 'Average GPU temperature in °C during the session.';
 comment on column public.sessions.gpu_temp_max is 'Maximum GPU temperature in °C during the session.';
 comment on column public.sessions.gpu_load_avg is 'Average GPU load in % during the session.';
 comment on column public.sessions.cpu_temp_avg is 'Average CPU temperature in °C during the session.';
 comment on column public.sessions.cpu_load_avg is 'Average CPU load in % during the session.';
+
+-- Existing installs: add columns introduced in later versions without touching the table.
+alter table public.sessions add column if not exists played_at timestamptz not null default now();
+alter table public.sessions add column if not exists avg_fps numeric(7, 2) not null default 0;
+alter table public.sessions add column if not exists min_fps numeric(7, 2) not null default 0;
+alter table public.sessions add column if not exists max_fps numeric(7, 2) not null default 0;
+alter table public.sessions add column if not exists duration_seconds integer not null default 0;
+alter table public.sessions add column if not exists resolution text;
+alter table public.sessions add column if not exists display_mode text;
+alter table public.sessions add column if not exists graphics_api text;
+alter table public.sessions add column if not exists game_settings jsonb;
+alter table public.sessions add column if not exists note text;
+alter table public.sessions add column if not exists gpu_temp_avg numeric(5, 2);
+alter table public.sessions add column if not exists gpu_temp_max numeric(5, 2);
+alter table public.sessions add column if not exists gpu_load_avg numeric(5, 2);
+alter table public.sessions add column if not exists cpu_temp_avg numeric(5, 2);
+alter table public.sessions add column if not exists cpu_load_avg numeric(5, 2);
 
 -- Time series of FPS within one session.
 create table if not exists public.fps_samples (
@@ -74,7 +94,9 @@ comment on column public.fps_samples.cpu_temp is 'CPU temperature in °C at the 
 comment on column public.fps_samples.gpu_load is 'GPU load in % at the sample (nullable).';
 comment on column public.fps_samples.cpu_load is 'CPU load in % at the sample (nullable).';
 
--- Existing installs: add the load columns without touching the table.
+-- Existing installs: add the telemetry columns without touching the table.
+alter table public.fps_samples add column if not exists gpu_temp numeric(5, 2);
+alter table public.fps_samples add column if not exists cpu_temp numeric(5, 2);
 alter table public.fps_samples add column if not exists gpu_load numeric(5, 2);
 alter table public.fps_samples add column if not exists cpu_load numeric(5, 2);
 
@@ -110,7 +132,11 @@ comment on column public.live_status.gpu_load is 'GPU load in %, when the agent 
 comment on column public.live_status.cpu_load is 'CPU load in %, when the agent can read it.';
 comment on column public.live_status.updated_at is 'When the agent last wrote this row.';
 
--- Existing installs: add the load columns without touching the table.
+-- Existing installs: add the telemetry/fact columns without touching the table.
+alter table public.live_status add column if not exists resolution text;
+alter table public.live_status add column if not exists graphics_api text;
+alter table public.live_status add column if not exists gpu_temp numeric(5, 2);
+alter table public.live_status add column if not exists cpu_temp numeric(5, 2);
 alter table public.live_status add column if not exists gpu_load numeric(5, 2);
 alter table public.live_status add column if not exists cpu_load numeric(5, 2);
 

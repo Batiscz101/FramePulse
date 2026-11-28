@@ -225,7 +225,7 @@ type PostgrestErrorBody = { code?: string; message?: string };
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  options: { params?: Record<string, string>; body?: unknown } = {},
+  options: { params?: Record<string, string>; body?: unknown; prefer?: string } = {},
 ): Promise<T> {
   const { url, apiKey, authUrl: explicitAuthUrl } = await readConnectionSettings();
 
@@ -249,6 +249,9 @@ async function request<T>(
       'Content-Type': 'application/json',
       Accept: 'application/json',
     };
+    if (options.prefer) {
+      headers['Prefer'] = options.prefer;
+    }
 
     if (hasStaticJwt) {
       headers['apikey'] = trimmedKey;
@@ -316,6 +319,7 @@ export async function insertGame(
   const rows = await request<GameRow[]>('POST', '/games', {
     params: { select },
     body: { name: game.name, process_name: game.process_name || null },
+    prefer: 'return=representation',
   });
   return rows[0];
 }
@@ -341,9 +345,9 @@ export async function fetchSessionSamples(sessionId: string): Promise<SampleRow[
   for (let offset = 0; offset < SAMPLE_PAGE_LIMIT * SAMPLE_PAGE_SIZE; offset += SAMPLE_PAGE_SIZE) {
     const batch = await request<SampleRow[]>('GET', '/fps_samples', {
       params: {
-        select: 'timestamp_offset, fps, gpu_temp, cpu_temp, gpu_load, cpu_load',
+        select: 'timestamp_offset,fps,gpu_temp,cpu_temp,gpu_load,cpu_load',
         session_id: `eq.${sessionId}`,
-        order: 'timestamp_offset.asc, id.asc',
+        order: 'timestamp_offset.asc,id.asc',
         offset: String(offset),
         limit: String(SAMPLE_PAGE_SIZE),
       },

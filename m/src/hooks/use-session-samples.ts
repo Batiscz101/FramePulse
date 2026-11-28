@@ -39,15 +39,17 @@ export function useSessionSamples(sessionId: string | undefined) {
     const requestId = sessionId;
     let cancelled = false;
 
-    // Memory copy: the series is already loaded and rendered from `cached`
-    // below, so there is nothing to synchronously update.
-    if (sampleCache.has(requestId)) return;
+    const memCached = sampleCache.get(requestId);
+    // Memory copy: non-empty series is already loaded and rendered from `cached`
+    // below, so there is nothing to synchronously update. Empty arrays are
+    // re-checked so newly uploaded samples appear without manual reload.
+    if (memCached && memCached.length > 0) return;
 
     const load = async () => {
       const cached = await readCachedSamples(requestId);
       if (cancelled) return;
 
-      if (cached) {
+      if (cached && cached.data.length > 0) {
         sampleCache.set(requestId, cached.data);
         setLoadedId(requestId);
         setLastSync(cached.savedAt);
@@ -62,8 +64,10 @@ export function useSessionSamples(sessionId: string | undefined) {
         setFailure((current) => (current?.id === requestId ? null : current));
         setOfflineId((current) => (current === requestId ? null : current));
 
-        const savedAt = await cacheSamples(requestId, next);
-        if (!cancelled) setLastSync(savedAt);
+        if (next.length > 0) {
+          const savedAt = await cacheSamples(requestId, next);
+          if (!cancelled) setLastSync(savedAt);
+        }
       } catch (caught) {
         if (cancelled) return;
 

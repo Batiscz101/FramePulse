@@ -414,3 +414,10 @@ class TelemetryCollectorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+from unittest.mock import patch as _mod_patch
+_coretemp_guard = _mod_patch("framepulse_agent.sensors._read_cpu_temp_coretemp", return_value=None)
+def setUpModule():
+    _coretemp_guard.start()
+def tearDownModule():
+    _coretemp_guard.stop()

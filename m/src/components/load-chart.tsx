@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 
@@ -21,6 +21,8 @@ type LoadChartProps = {
 const AXIS_MIN = 0;
 const AXIS_STEP = 10;
 const AXIS_SECTIONS = 10;
+const CARD_HORIZONTAL_CHROME = 34; // px-4 (16 * 2) + 1px border on each side
+const Y_AXIS_LABEL_WIDTH = 32;
 
 /**
  * Minimalist GPU/CPU load curve (same style as TemperatureChart): a card with
@@ -35,6 +37,7 @@ export const LoadChart = memo(function LoadChart({
   const { t } = useI18n();
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
+  const [cardWidth, setCardWidth] = useState<number | null>(null);
 
   // Null-safe: only points with a load reach the chart.
   const gpuPoints = useMemo(() => filterSamples(samples, 'gpuLoad'), [samples]);
@@ -51,10 +54,21 @@ export const LoadChart = memo(function LoadChart({
     [cpuPoints],
   );
   const chartPoints = hasGpu ? gpuPoints : cpuPoints;
+  const primaryData = hasGpu ? gpuData : cpuData;
+  const secondaryData = hasGpu && hasCpu ? cpuData : undefined;
+  const maxPoints = Math.max(primaryData.length, secondaryData?.length ?? 0);
 
   if (!hasGpu && !hasCpu) return null;
 
-  const chartWidth = Math.max(140, Math.min(windowWidth - 104, windowWidth - 40));
+  const innerWidth = Math.max(
+    140,
+    (cardWidth ?? Math.max(180, windowWidth - 40)) - CARD_HORIZONTAL_CHROME,
+  );
+  const chartWidth = Math.max(100, innerWidth - Y_AXIS_LABEL_WIDTH);
+  const pointSpacing =
+    secondaryData && primaryData.length !== secondaryData.length
+      ? chartWidth / Math.max(maxPoints - 1, 1)
+      : undefined;
 
   const clockAt = (sample: FpsSample | undefined): string =>
     sample ? toClock(startMinutes + sample.offsetSeconds / 60) : '';
@@ -63,13 +77,21 @@ export const LoadChart = memo(function LoadChart({
     const parts: string[] = [];
     const gpu = formatPercent(sample?.gpuLoad ?? null);
     const cpu = formatPercent(sample?.cpuLoad ?? null);
-    if (gpu) parts.push(t('legendGpu'), gpu);
-    if (cpu) parts.push(t('legendCpu'), cpu);
+    if (gpu) parts.push(`${t('legendGpu')} ${gpu}`);
+    if (cpu) parts.push(`${t('legendCpu')} ${cpu}`);
     return parts.join(' · ');
   };
 
   return (
-    <View className="rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4">
+    <View
+      onLayout={(event) => {
+        const nextWidth = Math.floor(event.nativeEvent.layout.width);
+        if (nextWidth > 0 && nextWidth !== cardWidth) {
+          setCardWidth(nextWidth);
+        }
+      }}
+      className="mt-3.5 rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4"
+    >
       <View className="flex-row items-center justify-between">
         <Text className="text-[13px] font-semibold text-ink">{t('loadChartTitle')}</Text>
         <View className="flex-row items-center gap-3">
@@ -88,13 +110,15 @@ export const LoadChart = memo(function LoadChart({
         </View>
       </View>
 
-      <View className="mt-4" style={{ marginLeft: -4 }}>
+      <View className="mt-4" style={{ width: innerWidth, overflow: 'hidden' }}>
         <LineChart
-          data={hasGpu ? gpuData : cpuData}
-          data2={hasGpu && hasCpu ? cpuData : undefined}
+          data={primaryData}
+          data2={secondaryData}
+          parentWidth={innerWidth}
           width={chartWidth}
           height={height}
-          adjustToWidth
+          adjustToWidth={pointSpacing === undefined}
+          spacing={pointSpacing}
           initialSpacing={0}
           endSpacing={0}
           disableScroll
@@ -103,12 +127,16 @@ export const LoadChart = memo(function LoadChart({
           thickness={2}
           color={hasGpu ? colors.accent : colors.muted}
           color2={hasGpu ? colors.muted : undefined}
-          hideDataPoints
-          hideDataPoints2
+          hideDataPoints={primaryData.length > 1}
+          hideDataPoints2={(secondaryData?.length ?? 0) > 1}
+          dataPointsRadius={3}
+          dataPointsColor={hasGpu ? colors.accent : colors.muted}
+          dataPointsColor2={hasGpu ? colors.muted : undefined}
           yAxisOffset={AXIS_MIN}
           maxValue={AXIS_STEP * AXIS_SECTIONS}
           noOfSections={AXIS_SECTIONS}
-          yAxisLabelWidth={32}
+          yAxisLabelWidth={Y_AXIS_LABEL_WIDTH}
+          yAxisThickness={0}
           yAxisLabelSuffix="%"
           roundToDigits={0}
           yAxisTextStyle={{

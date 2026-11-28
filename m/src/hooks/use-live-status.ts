@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
-import { fetchLiveStatus, type LiveStatusRow } from '@/lib/supabase';
+import { type LiveStatusRow } from '@/lib/supabase';
+import { fetchLiveStatus } from '@/lib/telemetry-api';
 
 /** What the UI consumes – every null field means "not available". */
 export type LiveStatus = {

@@ -95,7 +95,7 @@ export function LiveSessionModal({ status, liveSamples, historyGameId, onClose }
           accessibilityLabel={t('close')}
         />
 
-        <View className="mx-auto rounded-3xl border border-hairline bg-surface p-5">
+        <View className="mx-auto w-full rounded-3xl border border-hairline bg-surface p-5">
           <View className="flex-row items-center justify-between">
             <Text className="text-[15px] font-semibold text-ink">{t('liveSessionTitle')}</Text>
             <Pressable
@@ -120,17 +120,25 @@ export function LiveSessionModal({ status, liveSamples, historyGameId, onClose }
             {t('liveSessionDuration')}
           </Text>
 
-          <View className="mt-4 flex-row">
-            <LiveInfoRow label={t('badgeResolution')} value={status.resolution} />
-            <LiveInfoRow label={t('temperatureGpu')} value={formatTempC(status.gpuTemp)} />
+          <View className="mt-4 flex-row gap-4">
+            <View className="flex-1"><LiveInfoRow label={t('badgeResolution')} value={status.resolution} /></View>
+            <View className="flex-1"><LiveInfoRow label={t('badgeGraphicsApi')} value={status.graphicsApi} /></View>
           </View>
-          <View className="mt-2 flex-row">
-            <LiveInfoRow label={t('badgeGraphicsApi')} value={status.graphicsApi} />
-            <LiveInfoRow label={t('temperatureCpu')} value={formatTempC(status.cpuTemp)} />
-          </View>
-          <View className="mt-2 flex-row">
-            <LiveInfoRow label={t('telemetryGpuLoad')} value={formatPercent(status.gpuLoad)} />
-            <LiveInfoRow label={t('telemetryCpuLoad')} value={formatPercent(status.cpuLoad)} />
+          <View className="mt-3 flex-row gap-2.5">
+            <View className="flex-1 rounded-xl border border-hairline bg-surface/60 px-3 py-2">
+              <Text className="text-[10px] font-semibold uppercase tracking-[1.2px] text-faint" >{t('legendGpu')}</Text>
+              <View className="mt-1">
+                <LiveInfoRow label={t('temperatureGpu')} value={formatTempC(status.gpuTemp)} />
+                <LiveInfoRow label={t('telemetryGpuLoad')} value={formatPercent(status.gpuLoad)} />
+              </View>
+            </View>
+            <View className="flex-1 rounded-xl border border-hairline bg-surface/60 px-3 py-2">
+              <Text className="text-[10px] font-semibold uppercase tracking-[1.2px] text-faint" >{t('legendCpu')}</Text>
+              <View className="mt-1">
+                <LiveInfoRow label={t('temperatureCpu')} value={formatTempC(status.cpuTemp)} />
+                <LiveInfoRow label={t('telemetryCpuLoad')} value={formatPercent(status.cpuLoad)} />
+              </View>
+            </View>
           </View>
 
           <TemperatureChart samples={liveSamples} startMinutes={startMinutes} height={150} />

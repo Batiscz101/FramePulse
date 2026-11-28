@@ -58,6 +58,7 @@ export type GameSession = {
   gpuLoadAvg?: number | null;
   /** Average CPU temperature in °C during the session (`null` when unknown). */
   cpuTempAvg?: number | null;
+  cpuTempMax?: number | null;
   /** Average CPU load in % during the session (`null` when unknown). */
   cpuLoadAvg?: number | null;
 };
@@ -93,6 +94,7 @@ export type SessionRow = {
   gpu_temp_max?: number | string | null;
   gpu_load_avg?: number | string | null;
   cpu_temp_avg?: number | string | null;
+  cpu_temp_max?: number | string | null;
   cpu_load_avg?: number | string | null;
 };
 
@@ -176,8 +178,8 @@ export function shortNameFor(name: string): string {
 }
 
 function toNullableNumber(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = toNumber(value);
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -203,6 +205,7 @@ export function mapSession(row: SessionRow, gameId: string): GameSession {
     gpuTempMax: toNullableNumber(row.gpu_temp_max),
     gpuLoadAvg: toNullableNumber(row.gpu_load_avg),
     cpuTempAvg: toNullableNumber(row.cpu_temp_avg),
+    cpuTempMax: toNullableNumber(row.cpu_temp_max),
     cpuLoadAvg: toNullableNumber(row.cpu_load_avg),
   };
 }
@@ -237,10 +240,24 @@ export function mapSample(row: SampleRow): FpsSample {
   };
 }
 
+function averageMetric(samples: FpsSample[], key: 'gpuTemp' | 'cpuTemp' | 'gpuLoad' | 'cpuLoad'): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const sample of samples) {
+    const value = sample[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      sum += value;
+      count += 1;
+    }
+  }
+  return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
+}
+
 /**
  * Point reduction for `react-native-gifted-charts`: keeps the **minimum** FPS
  * per bucket so drops are not smoothed away when the session has many samples
- * (PresentMon can produce thousands). `offsetSeconds` stays the bucket average.
+ * (PresentMon can produce thousands). `offsetSeconds` and hardware telemetry
+ * fields keep their bucket averages.
  */
 export function downsampleSamples(samples: FpsSample[], maxPoints: number): FpsSample[] {
   if (samples.length <= maxPoints) return samples;
@@ -257,6 +274,10 @@ export function downsampleSamples(samples: FpsSample[], maxPoints: number): FpsS
     reduced.push({
       offsetSeconds: Math.round(offsetSeconds),
       fps: Math.round(fps * 10) / 10,
+      gpuTemp: averageMetric(bucket, 'gpuTemp'),
+      cpuTemp: averageMetric(bucket, 'cpuTemp'),
+      gpuLoad: averageMetric(bucket, 'gpuLoad'),
+      cpuLoad: averageMetric(bucket, 'cpuLoad'),
     });
   }
 

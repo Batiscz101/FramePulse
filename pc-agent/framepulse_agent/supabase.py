@@ -125,13 +125,17 @@ def _jwt_expiry_ttl(
 
 BOOLEAN_COLUMNS = frozenset({"is_playing"})
 
-# Columns PostgREST reads as numbers; string values in these columns are
-# parsed, anything not numeric is dropped instead of failing the request.
+# Columns PostgREST reads as integers; must stay Python `int` (not `123.0`)
+# because PostgreSQL rejects floating-point syntax for `integer` columns.
+INTEGER_COLUMNS = frozenset({"duration_seconds", "timestamp_offset"})
+
+# Columns PostgREST reads as floating-point numbers; string values in these
+# columns are parsed, anything not numeric is dropped instead of failing the request.
 NUMERIC_COLUMNS = frozenset({
     "current_fps", "gpu_temp", "cpu_temp", "gpu_load", "cpu_load",
-    "avg_fps", "min_fps", "max_fps", "duration_seconds",
-    "gpu_temp_avg", "gpu_temp_max", "gpu_load_avg", "cpu_temp_avg", "cpu_load_avg",
-    "timestamp_offset", "fps",
+    "avg_fps", "min_fps", "max_fps",
+    "gpu_temp_avg", "gpu_temp_max", "gpu_load_avg", "cpu_temp_avg", "cpu_temp_max", "cpu_load_avg",
+    "fps",
 })
 
 LIVE_STATUS_COLUMNS = frozenset({
@@ -143,8 +147,8 @@ LIVE_STATUS_COLUMNS = frozenset({
 SESSIONS_COLUMNS = frozenset({
     "id", "game_id", "played_at", "avg_fps", "min_fps", "max_fps",
     "duration_seconds", "resolution", "display_mode", "graphics_api",
-    "game_settings", "gpu_temp_avg", "gpu_temp_max", "gpu_load_avg",
-    "cpu_temp_avg", "cpu_load_avg",
+    "game_settings", "note", "gpu_temp_avg", "gpu_temp_max", "gpu_load_avg",
+    "cpu_temp_avg", "cpu_temp_max", "cpu_load_avg",
 })
 
 FPS_SAMPLES_COLUMNS = frozenset({
@@ -156,7 +160,7 @@ FPS_SAMPLES_COLUMNS = frozenset({
 def sanitize_row(columns: frozenset[str], row: Mapping[str, Any]) -> dict[str, Any]:
     """Keeps only schema columns with usable values; drops the rest.
 
-    Numbers must convert to finite floats (strings accepted), other values
+    Numbers must convert to finite ints/floats (strings accepted), other values
     must be non-empty strings or mappings/lists – invalid entries are dropped
     one by one instead of failing the whole request.
     """
@@ -174,11 +178,16 @@ def sanitize_row(columns: frozenset[str], row: Mapping[str, Any]) -> dict[str, A
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 number = float(value)
                 if math.isfinite(number):
-                    sanitized[key] = number
+                    sanitized[key] = int(round(number)) if key in INTEGER_COLUMNS else number
                 continue
             if isinstance(value, str):
                 text = value.strip()
                 if not text:
+                    continue
+                if key in INTEGER_COLUMNS:
+                    number = float(text)
+                    if math.isfinite(number):
+                        sanitized[key] = int(round(number))
                     continue
                 if key in NUMERIC_COLUMNS:
                     number = float(text)
@@ -393,6 +402,7 @@ class SupabaseClient:
         gpu_temp_max: float | None = None,
         gpu_load_avg: float | None = None,
         cpu_temp_avg: float | None = None,
+        cpu_temp_max: float | None = None,
         cpu_load_avg: float | None = None,
     ) -> None:
         row: dict[str, Any] = {
@@ -420,6 +430,8 @@ class SupabaseClient:
             row["gpu_load_avg"] = gpu_load_avg
         if cpu_temp_avg is not None:
             row["cpu_temp_avg"] = cpu_temp_avg
+        if cpu_temp_max is not None:
+            row["cpu_temp_max"] = cpu_temp_max
         if cpu_load_avg is not None:
             row["cpu_load_avg"] = cpu_load_avg
         try:
@@ -436,7 +448,13 @@ class SupabaseClient:
         """Inserts or updates the singleton `live_status` row (id = 'default')."""
         row = sanitize_row(LIVE_STATUS_COLUMNS, dict(row))
         row.setdefault("id", LIVE_STATUS_ID)
-        updated = self._request("PATCH", "/live_status", params={"id": f"eq.{LIVE_STATUS_ID}"}, json=row)
+        updated = self._request(
+            "PATCH",
+            "/live_status",
+            params={"id": f"eq.{LIVE_STATUS_ID}"},
+            json=row,
+            prefer="return=representation",
+        )
         if not updated:
             # No row yet (e.g., first contact after a fresh install) – create it.
             try:

@@ -43,11 +43,13 @@ export const LiveNowCard = memo(function LiveNowCard({ status, onOpenModal }: Li
 
   if (!status.isPlaying) return null;
 
+  const gpuTemp = formatTempC(status.gpuTemp);
+  const cpuTemp = formatTempC(status.cpuTemp);
   const detailParts = [
     status.resolution,
     status.graphicsApi,
-    formatTempC(status.gpuTemp),
-    formatTempC(status.cpuTemp),
+    gpuTemp ? `${t('legendGpu')} ${gpuTemp}` : null,
+    cpuTemp ? `${t('legendCpu')} ${cpuTemp}` : null,
   ].filter((part): part is string => part !== null);
 
   return (
@@ -56,7 +58,7 @@ export const LiveNowCard = memo(function LiveNowCard({ status, onOpenModal }: Li
         onPress={onOpenModal}
         accessibilityRole="button"
         accessibilityLabel={t('liveNow')}
-        className="rounded-2xg border border-hairline bg-surface px-4 py-3.5"
+        className="rounded-2xl border border-hairline bg-surface px-4 py-3.5"
         style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
       >
         <View className="flex-row items-center gap-2">

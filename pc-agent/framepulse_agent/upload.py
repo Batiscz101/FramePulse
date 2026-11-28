@@ -38,6 +38,7 @@ class SessionRecord:
     gpu_temp_max: float | None = None
     gpu_load_avg: float | None = None
     cpu_temp_avg: float | None = None
+    cpu_temp_max: float | None = None
     cpu_load_avg: float | None = None
 
     def to_json(self) -> str:
@@ -63,6 +64,7 @@ class SessionRecord:
             gpu_temp_max=data.get("gpu_temp_max"),
             gpu_load_avg=data.get("gpu_load_avg"),
             cpu_temp_avg=data.get("cpu_temp_avg"),
+            cpu_temp_max=data.get("cpu_temp_max"),
             cpu_load_avg=data.get("cpu_load_avg"),
         )
 
@@ -86,6 +88,7 @@ def build_record(
     gpu_temp_max: float | None = None,
     gpu_load_avg: float | None = None,
     cpu_temp_avg: float | None = None,
+        cpu_temp_max: float | None = None,
     cpu_load_avg: float | None = None,
 ) -> SessionRecord:
     """Converts measured data to a row for `sessions` + bodies for `fps_samples`."""
@@ -102,7 +105,7 @@ def build_record(
         duration_seconds=int(values["duration_seconds"]),
         samples=[
             {
-                "timestamp_offset": round(float(sample.offset), 2),
+                "timestamp_offset": int(round(float(sample.offset))),
                 "fps": round(float(sample.fps), 2),
                 "gpu_temp": _round_opt(sample.gpu_temp),
                 "cpu_temp": _round_opt(sample.cpu_temp),
@@ -119,6 +122,7 @@ def build_record(
         gpu_temp_max=gpu_temp_max,
         gpu_load_avg=gpu_load_avg,
         cpu_temp_avg=cpu_temp_avg,
+            cpu_temp_max=cpu_temp_max,
         cpu_load_avg=cpu_load_avg,
     )
 
@@ -267,24 +271,31 @@ class Uploader:
             gpu_temp_max=record.gpu_temp_max,
             gpu_load_avg=record.gpu_load_avg,
             cpu_temp_avg=record.cpu_temp_avg,
+                    cpu_temp_max=record.cpu_temp_max,
             cpu_load_avg=record.cpu_load_avg,
         )
 
         # Idempotent sample write: old rows are deleted before insertion.
-        # If a duplicate still occurs (previous attempt), the whole block is repeated
-        # from the start – otherwise some samples would be missing.
-        rows = [
-            {
-                "session_id": record.session_id,
-                "timestamp_offset": float(sample["timestamp_offset"]),
-                "fps": float(sample["fps"]),
-                "gpu_temp": sample.get("gpu_temp"),
-                "cpu_temp": sample.get("cpu_temp"),
-                "gpu_load": sample.get("gpu_load"),
-                "cpu_load": sample.get("cpu_load"),
-            }
-            for sample in record.samples
-        ]
+        # Ensure timestamp_offset is a strictly increasing int so integer DB
+        # columns and the (session_id, timestamp_offset) unique index never reject a batch.
+        rows: list[dict[str, Any]] = []
+        prev_offset: int | None = None
+        for sample in record.samples:
+            offset = max(0, int(round(float(sample["timestamp_offset"]))))
+            if prev_offset is not None and offset <= prev_offset:
+                offset = prev_offset + 1
+            prev_offset = offset
+            rows.append(
+                {
+                    "session_id": record.session_id,
+                    "timestamp_offset": offset,
+                    "fps": float(sample["fps"]),
+                    "gpu_temp": sample.get("gpu_temp"),
+                    "cpu_temp": sample.get("cpu_temp"),
+                    "gpu_load": sample.get("gpu_load"),
+                    "cpu_load": sample.get("cpu_load"),
+                }
+            )
 
         for attempt in (1, 2):
             try:

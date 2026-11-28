@@ -1,12 +1,14 @@
 import { DEFAULT_LANGUAGE, translate, type Language } from '@/lib/i18n';
 import {
   fetchGame as fetchGameRow,
+  fetchLiveStatus as fetchLiveStatusRow,
   fetchSessionSamples as fetchSampleRows,
   insertGame,
   isNeonAuthRequiredError,
   listGames,
   updateGame,
   updateSessionNote as updateSessionNoteRow,
+  type LiveStatusRow,
 } from '@/lib/supabase';
 import {
   downsampleSamples,
@@ -18,7 +20,7 @@ import {
 
 /** Columns needed by the list and the detail screen (samples are loaded lazily). */
 const GAME_SELECT =
-  'id, name, process_name, created_at, sessions(id, played_at, avg_fps, min_fps, max_fps, duration_seconds, resolution, display_mode, graphics_api, game_settings, note, gpu_temp_avg, gpu_temp_max, gpu_load_avg, cpu_temp_avg, cpu_load_avg)';
+  'id, name, process_name, created_at, sessions(id, played_at, avg_fps, min_fps, max_fps, duration_seconds, resolution, display_mode, graphics_api, game_settings, note, gpu_temp_avg, gpu_temp_max, gpu_load_avg, cpu_temp_avg, cpu_temp_max, cpu_load_avg)';
 
 /** PresentMon sessions can have thousands of samples; the chart never needs more. */
 const MAX_CHART_POINTS = 75;
@@ -111,5 +113,10 @@ export async function updateSessionNote(sessionId: string, note: string | null):
  */
 export async function fetchSessionSamples(sessionId: string): Promise<FpsSample[]> {
   const rows = await fetchSampleRows(sessionId);
-  return downsampleSamples(rows.map(mapSample), MAX_CHART_POINTS);
+  const mapped = rows.map(mapSample).sort((left, right) => left.offsetSeconds - right.offsetSeconds);
+  return downsampleSamples(mapped, MAX_CHART_POINTS);
+}
+
+export async function fetchLiveStatus(): Promise<LiveStatusRow | null> {
+  return fetchLiveStatusRow();
 }

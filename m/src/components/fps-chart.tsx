@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart, ruleTypes, type referenceConfigType } from 'react-native-gifted-charts';
 
@@ -44,10 +44,14 @@ function buildAxis(samples: FpsSample[]): Axis {
   return { min, step, sections };
 }
 
+const CARD_HORIZONTAL_CHROME = 34; // px-4 (16 * 2) + 1px border on each side
+const Y_AXIS_LABEL_WIDTH = 32;
+
 export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartProps) {
   const { language, t } = useI18n();
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
+  const [cardWidth, setCardWidth] = useState<number | null>(null);
 
   // Drop invalid points before touching the chart so `null` values can never
   // break the curve or throw when a tooltip touches it; the series is reduced
@@ -68,8 +72,11 @@ export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartPro
     labelTextStyle: { color: colors.faint, fontSize: 10, ...tabularNums },
   };
 
-  // Chart width always fits inside the card (page padding + card padding + y-axis).
-  const chartWidth = Math.max(140, Math.min(windowWidth - 104, windowWidth - 64));
+  const innerWidth = Math.max(
+    140,
+    (cardWidth ?? Math.max(180, windowWidth - 40)) - CARD_HORIZONTAL_CHROME,
+  );
+  const chartWidth = Math.max(100, innerWidth - Y_AXIS_LABEL_WIDTH);
 
   const midSample = validSamples[Math.floor(validSamples.length / 2)];
   const endSample = validSamples[validSamples.length - 1];
@@ -78,7 +85,15 @@ export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartPro
     sample ? toClock(session.startMinutes + sample.offsetSeconds / 60) : '';
 
   return (
-    <View className="rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4">
+    <View
+      onLayout={(event) => {
+        const nextWidth = Math.floor(event.nativeEvent.layout.width);
+        if (nextWidth > 0 && nextWidth !== cardWidth) {
+          setCardWidth(nextWidth);
+        }
+      }}
+      className="rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4"
+    >
       <View className="flex-row items-center justify-between">
         <Text className="text-[13px] font-semibold text-ink">{t('chartTitle')}</Text>
         <View className="flex-row items-center gap-3">
@@ -87,12 +102,13 @@ export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartPro
         </View>
       </View>
 
-      <View className="mt-4" style={{ marginLeft: -4 }}>
+      <View className="mt-4" style={{ width: innerWidth, overflow: 'hidden' }}>
         <LineChart
           data={data}
           showReferenceLine1={lowFpsPosition !== null}
           referenceLine1Position={lowFpsPosition ?? 0}
           referenceLine1Config={referenceConfig}
+          parentWidth={innerWidth}
           width={chartWidth}
           height={168}
           adjustToWidth
@@ -103,7 +119,9 @@ export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartPro
           curvature={0.15}
           thickness={2}
           color={colors.accent}
-          hideDataPoints
+          hideDataPoints={validSamples.length > 1}
+          dataPointsRadius={3}
+          dataPointsColor={colors.accent}
           areaChart
           startFillColor={colors.accent}
           endFillColor={colors.accent}
@@ -112,7 +130,8 @@ export const FpsChart = memo(function FpsChart({ session, samples }: FpsChartPro
           yAxisOffset={axis.min}
           maxValue={axis.step * axis.sections}
           noOfSections={axis.sections}
-          yAxisLabelWidth={32}
+          yAxisLabelWidth={Y_AXIS_LABEL_WIDTH}
+          yAxisThickness={0}
           yAxisLabelSuffix=""
           roundToDigits={0}
           yAxisTextStyle={{

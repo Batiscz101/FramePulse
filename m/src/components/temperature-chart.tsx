@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 
@@ -48,6 +48,9 @@ function formatTemp(value: number | null): string | null {
   return value === null ? null : `${Math.round(value)}°C`;
 }
 
+const CARD_HORIZONTAL_CHROME = 34; // px-4 (16 * 2) + 1px border on each side
+const Y_AXIS_LABEL_WIDTH = 32;
+
 /**
  * Minimalist GPU/CPU temperature curve (same style as FpsChart): a card with
  * a legend and a live-inspectable line chart with °C on the y-axis. Renders
@@ -61,6 +64,7 @@ export const TemperatureChart = memo(function TemperatureChart({
   const { t } = useI18n();
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
+  const [cardWidth, setCardWidth] = useState<number | null>(null);
 
   // Null-safe: only points with a temperature reach the chart.
   const gpuPoints = useMemo(() => filterSamples(samples, 'gpuTemp'), [samples]);
@@ -86,26 +90,44 @@ export const TemperatureChart = memo(function TemperatureChart({
     [cpuPoints],
   );
   const chartPoints = hasGpu ? gpuPoints : cpuPoints;
+  const primaryData = hasGpu ? gpuData : cpuData;
+  const secondaryData = hasGpu && hasCpu ? cpuData : undefined;
+  const maxPoints = Math.max(primaryData.length, secondaryData?.length ?? 0);
 
   if (!hasGpu && !hasCpu) return null;
 
-  const chartWidth = Math.max(140, Math.min(windowWidth - 104, windowWidth - 40));
+  const innerWidth = Math.max(
+    140,
+    (cardWidth ?? Math.max(180, windowWidth - 40)) - CARD_HORIZONTAL_CHROME,
+  );
+  const chartWidth = Math.max(100, innerWidth - Y_AXIS_LABEL_WIDTH);
+  const pointSpacing =
+    secondaryData && primaryData.length !== secondaryData.length
+      ? chartWidth / Math.max(maxPoints - 1, 1)
+      : undefined;
 
   const clockAt = (sample: FpsSample | undefined): string =>
     sample ? toClock(startMinutes + sample.offsetSeconds / 60) : '';
 
-  const tooltipParts = (sample: FpsSample | undefined): string =>
-    [
-      t('legendGpu'),
-      formatTemp(sample?.gpuTemp ?? null),
-      t('legendCpu'),
-      formatTemp(sample?.cpuTemp ?? null),
-    ]
-      .filter((part): part is string => part !== null)
-      .join(' · ');
+  const tooltipParts = (sample: FpsSample | undefined): string => {
+    const parts: string[] = [];
+    const gpu = formatTemp(sample?.gpuTemp ?? null);
+    const cpu = formatTemp(sample?.cpuTemp ?? null);
+    if (gpu) parts.push(`${t('legendGpu')} ${gpu}`);
+    if (cpu) parts.push(`${t('legendCpu')} ${cpu}`);
+    return parts.join(' · ');
+  };
 
   return (
-    <View className="rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4">
+    <View
+      onLayout={(event) => {
+        const nextWidth = Math.floor(event.nativeEvent.layout.width);
+        if (nextWidth > 0 && nextWidth !== cardWidth) {
+          setCardWidth(nextWidth);
+        }
+      }}
+      className="mt-3.5 rounded-2xl border border-hairline bg-surface px-4 pb-4 pt-4"
+    >
       <View className="flex-row items-center justify-between">
         <Text className="text-[13px] font-semibold text-ink">{t('temperatureChartTitle')}</Text>
         <View className="flex-row items-center gap-3">
@@ -124,13 +146,15 @@ export const TemperatureChart = memo(function TemperatureChart({
         </View>
       </View>
 
-      <View className="mt-4" style={{ marginLeft: -4 }}>
+      <View className="mt-4" style={{ width: innerWidth, overflow: 'hidden' }}>
         <LineChart
-          data={hasGpu ? gpuData : cpuData}
-          data2={hasGpu && hasCpu ? cpuData : undefined}
+          data={primaryData}
+          data2={secondaryData}
+          parentWidth={innerWidth}
           width={chartWidth}
           height={height}
-          adjustToWidth
+          adjustToWidth={pointSpacing === undefined}
+          spacing={pointSpacing}
           initialSpacing={0}
           endSpacing={0}
           disableScroll
@@ -139,12 +163,16 @@ export const TemperatureChart = memo(function TemperatureChart({
           thickness={2}
           color={hasGpu ? colors.accent : colors.muted}
           color2={hasGpu ? colors.muted : undefined}
-          hideDataPoints
-          hideDataPoints2
+          hideDataPoints={primaryData.length > 1}
+          hideDataPoints2={(secondaryData?.length ?? 0) > 1}
+          dataPointsRadius={3}
+          dataPointsColor={hasGpu ? colors.accent : colors.muted}
+          dataPointsColor2={hasGpu ? colors.muted : undefined}
           yAxisOffset={axis.min}
           maxValue={Math.max(axis.step * axis.sections, 1)}
           noOfSections={axis.sections}
-          yAxisLabelWidth={32}
+          yAxisLabelWidth={Y_AXIS_LABEL_WIDTH}
+          yAxisThickness={0}
           yAxisLabelSuffix="°C"
           roundToDigits={0}
           yAxisTextStyle={{

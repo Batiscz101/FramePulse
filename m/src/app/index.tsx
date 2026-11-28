@@ -68,6 +68,8 @@ export default function GamesScreen() {
           fps: live.currentFps ?? 0,
           gpuTemp: live.gpuTemp,
           cpuTemp: live.cpuTemp,
+          gpuLoad: live.gpuLoad,
+          cpuLoad: live.cpuLoad,
         },
       ]);
     }
@@ -147,6 +149,7 @@ export default function GamesScreen() {
               </View>
 
               <View className="mt-1 flex-row items-center gap-2">
+                {offline ? (
                 <Pressable
                   onPress={() => router.push({ pathname: '/connection' })}
                   hitSlop={8}
@@ -157,6 +160,7 @@ export default function GamesScreen() {
                 >
                   <Settings2 size={15} color={colors.muted} strokeWidth={2} />
                 </Pressable>
+              ) : null}
                 <LanguageToggle />
                 <ThemeToggle />
 

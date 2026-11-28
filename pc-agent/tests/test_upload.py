@@ -42,7 +42,8 @@ class BuildRecordTests(unittest.TestCase):
         self.assertEqual(record.duration_seconds, 123)
 
         self.assertEqual(len(record.samples), 2)
-        self.assertEqual(record.samples[1]["timestamp_offset"], 2.0)
+        self.assertEqual(record.samples[1]["timestamp_offset"], 2)
+        self.assertIs(type(record.samples[1]["timestamp_offset"]), int)
         self.assertEqual(record.samples[1]["fps"], 59.94)
 
     def test_local_time_is_converted_to_utc(self) -> None:
@@ -214,7 +215,8 @@ class UploaderTests(unittest.TestCase):
 
             row = client.samples[0]
             self.assertEqual(row["session_id"], record.session_id)
-            self.assertEqual(row["timestamp_offset"], 0.0)
+            self.assertEqual(row["timestamp_offset"], 0)
+            self.assertIs(type(row["timestamp_offset"]), int)
             self.assertEqual(row["fps"], 60.0)
             self.assertEqual(row["gpu_temp"], 55.0)
             self.assertEqual(row["cpu_temp"], 60.0)

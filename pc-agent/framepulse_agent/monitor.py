@@ -477,6 +477,7 @@ class GameAgent:
                 gpu_temp_max=telemetry.get("gpu_temp_max"),
                 gpu_load_avg=telemetry.get("gpu_load_avg"),
                 cpu_temp_avg=telemetry.get("cpu_temp_avg"),
+            cpu_temp_max=telemetry.get("cpu_temp_max"),
                 cpu_load_avg=telemetry.get("cpu_load_avg"),
             )
             self._known = self._known | {active.process_name}

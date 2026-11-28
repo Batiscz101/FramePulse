@@ -51,6 +51,7 @@ class CreateSessionTests(unittest.TestCase):
         self.assertTrue(set(payload) <= SESSIONS_COLUMNS)
         self.assertEqual(payload["avg_fps"], 60.0)
         self.assertEqual(payload["duration_seconds"], 123)
+        self.assertIs(type(payload["duration_seconds"]), int)
         self.assertEqual(payload["game_settings"], {"vsync": True})
         self.assertEqual(payload["gpu_temp_max"], 61.0)
 
@@ -72,6 +73,19 @@ class SanitizeRowTests(unittest.TestCase):
         self.assertEqual(row["current_fps"], 60.0)
         self.assertNotIn("gpu_temp", row)
         self.assertNotIn("cpu_temp", row)
+
+    def test_integer_columns_stay_python_int(self) -> None:
+        row = sanitize_row(SESSIONS_COLUMNS, {"duration_seconds": "123.6"})
+        self.assertEqual(row["duration_seconds"], 124)
+        self.assertIs(type(row["duration_seconds"]), int)
+
+        row_float = sanitize_row(SESSIONS_COLUMNS, {"duration_seconds": 45.0})
+        self.assertEqual(row_float["duration_seconds"], 45)
+        self.assertIs(type(row_float["duration_seconds"]), int)
+
+        sample_row = sanitize_row(FPS_SAMPLES_COLUMNS, {"timestamp_offset": 12.4, "fps": 60.0})
+        self.assertEqual(sample_row["timestamp_offset"], 12)
+        self.assertIs(type(sample_row["timestamp_offset"]), int)
 
 
 class SupabaseClientPayloadTests(unittest.TestCase):
@@ -134,7 +148,9 @@ class SupabaseClientPayloadTests(unittest.TestCase):
         for row in rows:
             self.assertTrue(set(row) <= FPS_SAMPLES_COLUMNS)
             self.assertEqual(row["session_id"], "s1")
-        self.assertEqual(rows[1]["timestamp_offset"], 4.0)
+            self.assertIs(type(row["timestamp_offset"]), int)
+        self.assertEqual(rows[0]["timestamp_offset"], 2)
+        self.assertEqual(rows[1]["timestamp_offset"], 4)
 
 
 if __name__ == "__main__":
